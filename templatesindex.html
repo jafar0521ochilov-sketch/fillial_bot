@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mazzali Inventory</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: var(--tg-theme-bg-color, #f1f5f9);
+      color: var(--tg-theme-text-color, #0f172a);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+  </style>
+</head>
+<body class="p-3 pb-28">
+
+  <!-- Filial va Amal tanlash bloki -->
+  <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/80 mb-3 space-y-3">
+    <div>
+      <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Филиал</label>
+      <select id="branchSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 transition-colors">
+        <option value="Паркент">Паркент</option>
+        <option value="Ц-6">Ц-6</option>
+        <option value="Шота">Шота</option>
+        <option value="Ц-1">Ц-1</option>
+        <option value="КФС">КФС</option>
+        <option value="Ардус">Ардус</option>
+        <option value="Аския">Аския</option>
+        <option value="Махтумкули">Махтумкули</option>
+        <option value="Чехов">Чехов</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Тип операции</label>
+      <select id="docTypeSelect" onchange="handleDocTypeChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 transition-colors">
+        <option value="Утренний остаток">🌅 Утренний остаток</option>
+        <option value="Приход">📥 Приход (по списку)</option>
+        <option value="Приход_Фото">📸 Приход по накладной (фото)</option>
+        <option value="Общий расход блюд">🍽 Общий расход блюд</option>
+        <option value="Списание">🗑 Списание</option>
+        <option value="Вечерний остаток">🌙 Вечерний остаток</option>
+        <option value="Заказ для фабрики">📋 Заказ для фабрики</option>
+        <option value="Дополнительный товар">✍️ Дополнительный товар (вручную)</option>
+        <option value="Закончившиеся блюда">📸 Закончившиеся блюда (фото)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 1. Standart 135 ta taom ro'yxati -->
+  <div id="dishesSection">
+    <div class="sticky top-2 z-20 mb-3">
+      <input type="text" id="searchInput" oninput="filterDishes()" placeholder="🔍 Поиск блюда или штрих-кода..." 
+             class="w-full bg-white/95 backdrop-blur shadow-sm border border-slate-200 rounded-xl p-2.5 text-sm outline-none focus:border-blue-500">
+    </div>
+    
+    <div id="loadingIndicator" class="text-center py-8 text-sm text-slate-400 font-medium">
+      Загрузка меню...
+    </div>
+
+    <div id="dishesList" class="space-y-2">
+      <!-- 135 ta taom dinamik joylanadi -->
+    </div>
+  </div>
+
+  <!-- 2. Qo'shimcha tovarlar (Qo'lda yozish oynasi) -->
+  <div id="extraGoodsSection" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80">
+    <h3 class="font-bold text-sm text-slate-800 mb-1">✍️ Дополнительные товары</h3>
+    <p class="text-xs text-slate-400 mb-3">Каждый товар с новой строки:<br><code class="text-blue-600 font-semibold">Название - Количество</code></p>
+    <textarea id="extraGoodsText" rows="7" placeholder="Контейнер 500мл - 100&#10;Салфетки - 10&#10;Вилки - 200" 
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-blue-500 font-mono"></textarea>
+  </div>
+
+  <!-- 3. Rasmlarni yuklash (Nakladnoy yoki Tugagan taomlar) -->
+  <div id="photoSection" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 text-center">
+    <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
+      📸
+    </div>
+    <h3 id="photoTitle" class="font-bold text-sm text-slate-800 mb-1">Загрузка фото</h3>
+    <p id="photoDesc" class="text-xs text-slate-400 mb-4">Сфотографируйте документ четко при хорошем освещении</p>
+    
+    <input type="file" id="photoInput" accept="image/*" class="hidden" onchange="previewPhoto(event)">
+    <button type="button" onclick="document.getElementById('photoInput').click()" 
+            class="w-full py-3 bg-blue-50 text-blue-600 text-sm font-semibold rounded-xl border border-dashed border-blue-300 active:bg-blue-100 transition-colors">
+      📷 Выбрать фото
+    </button>
+    <p id="fileNamePreview" class="text-xs text-emerald-600 font-medium mt-3 break-all"></p>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.ready();
+    }
+
+    let dishesData = [];
+    let quantities = {};
+
+    // 135 ta taomni serverdan yuklash
+    async function loadDishes() {
+      try {
+        const res = await fetch('/api/dishes');
+        dishesData = await res.json();
+        document.getElementById('loadingIndicator').classList.add('hidden');
+        renderDishes(dishesData);
+      } catch (e) {
+        document.getElementById('loadingIndicator').innerText = "Ошибка загрузки данных.";
+        console.error(e);
+      }
+    }
+
+    // Taomlar ro'yxatini render qilish
+    function renderDishes(items) {
+      const list = document.getElementById('dishesList');
+      list.innerHTML = '';
+      
+      if (items.length === 0) {
+        list.innerHTML = '<div class="text-center py-6 text-xs text-slate-400">Ничего не найдено</div>';
+        return;
+      }
+
+      items.forEach(item => {
+        const qty = quantities[item.name] || 0;
+        const div = document.createElement('div');
+        div.className = "bg-white p-3 rounded-2xl shadow-sm border border-slate-200/70 flex items-center justify-between";
+        div.innerHTML = `
+          <div class="pr-2 flex-1">
+            <h4 class="font-medium text-xs text-slate-800 leading-snug">${item.name}</h4>
+            <span class="text-[10px] text-slate-400">${item.barcode ? 'ШК: ' + item.barcode : ''}</span>
+          </div>
+          <div class="flex items-center space-x-1.5 shrink-0">
+            <button type="button" onclick="updateQty('${item.name.replace(/'/g, "\\'")}', -1)" 
+                    class="w-8 h-8 rounded-lg bg-slate-100 active:bg-slate-200 font-bold text-slate-600 flex items-center justify-center text-sm">-</button>
+            <input type="number" min="0" step="any" value="${qty > 0 ? qty : ''}" placeholder="0" 
+                   oninput="setQty('${item.name.replace(/'/g, "\\'")}', this.value)" 
+                   class="w-12 h-8 text-center text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-500">
+            <button type="button" onclick="updateQty('${item.name.replace(/'/g, "\\'")}', 1)" 
+                    class="w-8 h-8 rounded-lg bg-blue-600 active:bg-blue-700 font-bold text-white flex items-center justify-center text-sm">+</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function updateQty(name, delta) {
+      quantities[name] = Math.max(0, (quantities[name] || 0) + delta);
+      if (quantities[name] === 0) delete quantities[name];
+      updateMainButton();
+      filterDishes();
+    }
+
+    function setQty(name, val) {
+      const num = parseFloat(val);
+      if (!isNaN(num) && num > 0) {
+        quantities[name] = num;
+      } else {
+        delete quantities[name];
+      }
+      updateMainButton();
+    }
+
+    function filterDishes() {
+      const q = document.getElementById('searchInput').value.toLowerCase().trim();
+      const filtered = dishesData.filter(d => 
+        d.name.toLowerCase().includes(q) || (d.barcode && d.barcode.toLowerCase().includes(q))
+      );
+      renderDishes(filtered);
+    }
+
+    function handleDocTypeChange() {
+      const dt = document.getElementById('docTypeSelect').value;
+      const dishesSec = document.getElementById('dishesSection');
+      const extraSec = document.getElementById('extraGoodsSection');
+      const photoSec = document.getElementById('photoSection');
+      const photoTitle = document.getElementById('photoTitle');
+      const photoDesc = document.getElementById('photoDesc');
+
+      dishesSec.classList.add('hidden');
+      extraSec.classList.add('hidden');
+      photoSec.classList.add('hidden');
+
+      if (dt === 'Дополнительный товар') {
+        extraSec.classList.remove('hidden');
+      } else if (dt === 'Приход_Фото') {
+        photoSec.classList.remove('hidden');
+        photoTitle.innerText = "📸 Фото накладной (Приход)";
+        photoDesc.innerText = "Сфотографируйте приходную накладную для автоматического распознавания";
+      } else if (dt === 'Закончившиеся блюда') {
+        photoSec.classList.remove('hidden');
+        photoTitle.innerText = "📸 Закончившиеся блюда";
+        photoDesc.innerText = "Сфотографируйте чек или лист со списком блюд для увеличения заказа";
+      } else {
+        dishesSec.classList.remove('hidden');
+      }
+      updateMainButton();
+    }
+
+    function previewPhoto(event) {
+      const file = event.target.files[0];
+      const preview = document.getElementById('fileNamePreview');
+      if (file) {
+        preview.innerText = "✓ Выбран: " + file.name;
+      } else {
+        preview.innerText = "";
+      }
+      updateMainButton();
+    }
+
+    function updateMainButton() {
+      if (!tg?.MainButton) return;
+      const dt = document.getElementById('docTypeSelect').value;
+      let hasData = false;
+
+      if (dt === 'Дополнительный товар') {
+        hasData = document.getElementById('extraGoodsText').value.trim().length > 0;
+      } else if (dt === 'Закончившиеся блюда' || dt === 'Приход_Фото') {
+        hasData = document.getElementById('photoInput').files.length > 0;
+      } else {
+        hasData = Object.keys(quantities).length > 0;
+      }
+
+      if (hasData) {
+        tg.MainButton.text = "ОТПРАВИТЬ ДАННЫЕ";
+        tg.MainButton.show();
+      } else {
+        tg.MainButton.hide();
+      }
+    }
+
+    document.getElementById('extraGoodsText').addEventListener('input', updateMainButton);
+
+    // Ma'lumotlarni serverga yuborish
+    if (tg?.MainButton) {
+      tg.MainButton.onClick(async () => {
+        tg.MainButton.showProgress();
+        const branch = document.getElementById('branchSelect').value;
+        const dt = document.getElementById('docTypeSelect').value;
+
+        try {
+          if (dt === 'Дополнительный товар') {
+            const text = document.getElementById('extraGoodsText').value;
+            await fetch('/api/submit_extra', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ branch, text })
+            });
+          } else if (dt === 'Закончившиеся блюда' || dt === 'Приход_Фото') {
+            const file = document.getElementById('photoInput').files[0];
+            const formData = new FormData();
+            formData.append('branch', branch);
+            formData.append('doc_type', dt);
+            formData.append('photo', file);
+            await fetch('/api/submit_photo', {
+              method: 'POST',
+              body: formData
+            });
+          } else {
+            await fetch('/api/submit_items', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ branch, doc_type: dt, items: quantities })
+            });
+          }
+          
+          tg.MainButton.hideProgress();
+          tg.showAlert("✅ Данные успешно сохранены!", () => {
+            tg.close();
+          });
+        } catch (err) {
+          tg.MainButton.hideProgress();
+          tg.showAlert("❌ Ошибка при отправке данных!");
+        }
+      });
+    }
+
+    loadDishes();
+  </script>
+</body>
+</html>
