@@ -4,6 +4,7 @@ main.py - Mazzali Telegram Mini App & Bot
 """
 
 import asyncio
+import os
 from pathlib import Path
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.templating import Jinja2Templates
@@ -24,8 +25,9 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
-# Mini App manzili (Tuzatilgan ngrok havolasi)
-WEBAPP_URL =  "https://f7e2cf5f113fc8.lhr.life"
+# Render'dagi doimiy domen yoki muhit o'zgaruvchisidan olish
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
+WEBAPP_URL = RENDER_EXTERNAL_URL
 
 # ====================================================
 # 1. 24/7 MONITORING VA ASOSIY SAHIFA
@@ -39,7 +41,7 @@ async def health_check():
 @app.get("/")
 async def serve_mini_app(request: Request):
     """Mini App bosh oynasi"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html", {"request": request})
 
 
 # ====================================================
@@ -191,7 +193,7 @@ async def sync_background_worker():
 
 
 # ====================================================
-# 5. SERVER VA BOTNI ISHGA TUSHIRISH
+# 5. SERVER VA BOTni ISHGA TUSHIRISH
 # ====================================================
 async def main():
     # 1. Lokal bazani tayyorlash
@@ -201,7 +203,6 @@ async def main():
     asyncio.create_task(sync_background_worker())
 
     # 3. FastAPI veb-serverini ishga tushirish
-    import os
     port = int(os.getenv("PORT", 8000))
     server_config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
     server = uvicorn.Server(server_config)
