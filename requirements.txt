@@ -5,7 +5,7 @@ python-multipart
 aiogram
 aiosqlite
 python-dotenv
-google-generativeai
+google-genai
 openpyxl
 pandas
 pillow
