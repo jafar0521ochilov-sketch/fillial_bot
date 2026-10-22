@@ -3,8 +3,10 @@ uvicorn
 jinja2
 python-multipart
 aiogram
+aiosqlite
 python-dotenv
 google-generativeai
 openpyxl
 pandas
 pillow
+gspread
