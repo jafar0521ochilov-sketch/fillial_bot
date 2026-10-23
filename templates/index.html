@@ -160,4 +160,182 @@
     let quantities = {};
     let selectedCategory = 'all';
 
-    // TAOMLARNI KATEGORIYALARGA AJRAT
+    // TAOMLARNI KATEGORIYALARGA AJRATISH XARITASI
+    const categoryMap = {
+      garnish: ["Гречка с капустой", "Гарнир Пюре карт.", "Гарнир Рис отв.", "Картофель с грибами", "Драники картофельные с соус.Тар-тар", "Оладьи из кабачков"],
+      breakfast: ["Каша Овсяная", "Каша Рисовая", "Рогалики с орехами", "Блины с джемом", "Блины с курицей", "Блины с мясом", "Блины с Нутеллой", "Блины с творогом", "Панкейки с джемом", "Пирожки с вишней", "Пирожки с капустой", "Пирожки с картошкой", "Пирожки с мясом", "Пирожки с рисом и яйцом", "Пирожки с яблочным джемом", "Маффины ассорти", "Сырники", "Эчпочмаки", "Бургер", "Кимбап с крабовыми палочками", "Кимбап с курицей", "Кимбап с тунцом", "Кимбап с угрем", "Кимбап с форелью", "Клаб сэндвич с Индейкой", "Клаб сэндвич с Курицей", "Клаб сэндвич с Салями", "Клаб сэндвич с Тунцом", "Клаб сэндвич с Форелью", "Конвертики с грибами", "Конвертики с запеченной курицей и сыром", "Конвертики с творогом и вишней", "Конвертики со шпинатом и сыром", "Омлет с курицей", "Омлет с сыром и шпинатом", "ОНИГИРИ с курицей", "ОНИГИРИ с тунцом", "ОНИГИРИ Филадельфия", "Роллы индейка с сыром", "Роллы Цезарь", "Сосиски в тесте", "Сэндвич Чиабатта с курицей", "Творожная запеканка", "Шаурма куриная"],
+      beef: ["Бефстроганов с рисом", "Гуляш из говядины с гречкой", "Долма", "Домашние голубцы", "Котлета говяжья с пюре", "Макароны по-флотски", "Манты с говядиной", "Медальоны с овощами гриль", "Мясо по-французски", "Пельмени жареные", "Плов из говядины", "Рваная говядина в сливочно-перечном соусе", "Сардельки с пюре", "Спагетти Болоньезе", "Тефтели домашние", "Тушенка с макаронами", "Школьная котлета с пюре"],
+      poultry: ["Биточки из курицы с рисом и овощ.", "Боул с цыпленком тандури", "Гречка по-домашнему с курицей", "Грузинское оджахури с курицей и овощами", "Жареный рис по-азиатски", "Котлета куриная на пару с пюре", "Котлета куриная по-киевски с пюре", "Котлета куриная с пюре", "Котлеты куриные на пару (2шт)", "Котлеты куриные по-киевски (2шт)", "Куриная грудка с овощами на пару", "Курица гриль с овощами", "Курица Карри с рисом", "Курица по-азиатски с рисом", "Курица по-мексикански", "Курица Терияки с рисом", "Люля куриные с гречкой", "Оладьи куриные с пюре", "Спагетти Карбонара", "Утиная грудка с картофелем и розмарином", "Фетучини Альфредо", "Шницель в сырной панировке с пюре"],
+      fish: ["Рыбная котлета и рис с овощами", "Судак с овощами на пару"],
+      dessert: ["Десерт Дубайский", "Десерт Наполеон", "Десерт Медовик", "Панна-котта Манго-маракуйя", "Десерт Черный лес"],
+      drink: ["Смузи Витаминный микс", "Смузи Тропический микс", "Смузи Цитрусовый микс", "Смузи Экзотический микс", "Смузи Ягодный микс", "Лимонад", "Морс Клубника", "Морс Клюква", "Морс Смородина", "Морс Шиповник", "Напиток Айс-ти"],
+      salad: ["Баклажаны по-корейски", "Весенний", "Винегрет", "Винегрет с КАПУСТОЙ", "Витаминка", "Греческий", "Деревенский с мясом и грибами", "Домашняя Баклажанная Икра", "Зеленый салат с заправкой", "Королевский", "Крабовый", "Медовый с курицей", "Мимоза", "Морковча", "Нежный с курицей", "Огурцы по-корейски", "Оливье с колбасой", "Оливье с мясом", "Сельдь под шубой", "Цезарь с курицей"],
+      soup: ["Борщ", "Куриный бульон с лапшой", "Мастава", "Суп с фрикадельками", "Сырный суп с овощами", "Том Ям с креветками", "Чечевичный суп-пюре", "Щи из щавеля"]
+    };
+
+    async function loadDishes() {
+      try {
+        const res = await fetch('/api/dishes');
+        dishesData = await res.json();
+        document.getElementById('loadingIndicator').classList.add('hidden');
+        renderDishes(dishesData);
+      } catch (e) {
+        document.getElementById('loadingIndicator').innerText = "⚠️ Yuklashda xatolik bo'ldi.";
+      }
+    }
+
+    function renderDishes(items) {
+      const list = document.getElementById('dishesList');
+      list.innerHTML = '';
+      
+      if (items.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-xs text-slate-400 font-medium">Hech narsa topilmadi</div>';
+        return;
+      }
+
+      items.forEach(item => {
+        const qty = quantities[item.name] || 0;
+        const div = document.createElement('div');
+        div.className = `bg-white p-3 rounded-2xl shadow-sm border transition-all flex items-center justify-between ${qty > 0 ? 'border-blue-500 ring-1 ring-blue-500/20 bg-blue-50/20' : 'border-slate-200/80'}`;
+        
+        div.innerHTML = `
+          <div class="pr-2 flex-1">
+            <h4 class="font-bold text-xs text-slate-800 leading-snug">${item.name}</h4>
+          </div>
+          
+          <div class="flex items-center space-x-1 shrink-0">
+            <button type="button" onclick="updateQty('${item.name.replace(/'/g, "\\'")}', -1)" 
+                    class="w-8 h-8 rounded-xl bg-slate-100 active:bg-slate-200 font-extrabold text-slate-600 flex items-center justify-center text-sm">-</button>
+            
+            <input type="number" min="0" step="any" value="${qty > 0 ? qty : ''}" placeholder="0" 
+                   oninput="setQty('${item.name.replace(/'/g, "\\'")}', this.value)" 
+                   class="w-12 h-8 text-center text-xs font-extrabold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+            
+            <button type="button" onclick="updateQty('${item.name.replace(/'/g, "\\'")}', 1)" 
+                    class="w-8 h-8 rounded-xl bg-blue-600 active:bg-blue-700 font-extrabold text-white flex items-center justify-center text-sm">+</button>
+            
+            <button type="button" onclick="updateQty('${item.name.replace(/'/g, "\\'")}', 5)" 
+                    class="px-2 h-8 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs border border-blue-200 active:bg-blue-100">+5</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function updateQty(name, delta) {
+      quantities[name] = Math.max(0, (quantities[name] || 0) + delta);
+      if (quantities[name] === 0) delete quantities[name];
+      updateCartUI();
+      filterDishes();
+    }
+
+    function setQty(name, val) {
+      const num = parseFloat(val);
+      if (!isNaN(num) && num > 0) quantities[name] = num;
+      else delete quantities[name];
+      updateCartUI();
+    }
+
+    function filterCategory(cat) {
+      selectedCategory = cat;
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.className = 'cat-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0';
+      });
+      document.getElementById('cat-' + cat).className = 'cat-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white shadow-sm shrink-0';
+      filterDishes();
+    }
+
+    function filterDishes() {
+      const q = document.getElementById('searchInput').value.toLowerCase().trim();
+      let filtered = dishesData;
+
+      if (selectedCategory !== 'all') {
+        const allowedNames = categoryMap[selectedCategory] || [];
+        filtered = filtered.filter(d => allowedNames.includes(d.name));
+      }
+
+      if (q) {
+        filtered = filtered.filter(d => d.name.toLowerCase().includes(q));
+      }
+
+      renderDishes(filtered);
+    }
+
+    function handleDocTypeChange() {
+      const dt = document.getElementById('docTypeSelect').value;
+      const isPhoto = dt.includes('Фото');
+      const isExtra = dt === 'Дополнительный товар';
+
+      document.getElementById('dishesSection').classList.toggle('hidden', isPhoto || isExtra);
+      document.getElementById('categoryTabs').classList.toggle('hidden', isPhoto || isExtra);
+      document.getElementById('extraGoodsSection').classList.toggle('hidden', !isExtra);
+      document.getElementById('photoSection').classList.toggle('hidden', !isPhoto);
+
+      if (dt === 'Приход_Фото') {
+        document.getElementById('photoTitle').innerText = "📸 Nakladnoy rasmi (Приход)";
+        document.getElementById('photoDesc').innerText = "Kirim nakladnoyini kamerada aniq rasmga oling";
+      } else if (dt === 'Закончившиеся блюда') {
+        document.getElementById('photoTitle').innerText = "📸 Tugagan taomlar ro'yxati";
+        document.getElementById('photoDesc').innerText = "Tugagan taomlar yozilgan varaqni rasmga oling";
+      }
+      updateCartUI();
+    }
+
+    function previewPhoto(event) {
+      const file = event.target.files[0];
+      document.getElementById('fileNamePreview').innerText = file ? "✓ Rasm tanlandi: " + file.name : "";
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      document.getElementById('cartCount').innerText = Object.keys(quantities).length;
+    }
+
+    async function submitData() {
+      const branch = document.getElementById('branchSelect').value;
+      const dt = document.getElementById('docTypeSelect').value;
+      const submitBtn = document.getElementById('submitBtn');
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = "YUBORILMOQDA...";
+
+      try {
+        if (dt === 'Дополнительный товар') {
+          const text = document.getElementById('extraGoodsText').value;
+          await fetch('/api/submit_extra', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ branch, text })
+          });
+        } else if (dt.includes('Фото')) {
+          const file = document.getElementById('photoInput').files[0];
+          const formData = new FormData();
+          formData.append('branch', branch);
+          formData.append('doc_type', dt);
+          formData.append('photo', file);
+          await fetch('/api/submit_photo', { method: 'POST', body: formData });
+        } else {
+          await fetch('/api/submit_items', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ branch, doc_type: dt, items: quantities })
+          });
+        }
+
+        tg.showAlert("✅ Muvaffaqiyatli saqlandi!", () => {
+          quantities = {};
+          updateCartUI();
+          tg.close();
+        });
+      } catch (err) {
+        tg.showAlert("❌ Yuborishda xatolik yuz berdi!");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "YUBORISH ➔";
+      }
+    }
+
+    loadDishes();
+  </script>
+</body>
+</html>

@@ -5,6 +5,8 @@ sheets_database.py - Mazzali Inventory & Order Management Bot
 
 import asyncio
 from datetime import datetime, timedelta
+import json
+import os
 import aiosqlite
 import gspread
 from google.oauth2.service_account import Credentials
@@ -17,12 +19,22 @@ _spreadsheet = None
 
 
 def get_spreadsheet():
-    """Google Sheets hujjatiga xavfsiz ulanish"""
+    """
+    Google Sheets hujjatiga xavfsiz va moslashuvchan ulanish.
+    1. Render.com Environment Variable (GOOGLE_CREDENTIALS_JSON) tekshiriladi.
+    2. Agar u bo'lmasa, lokal credentials.json faylidan o'qiladi.
+    """
     global _gspread_client, _spreadsheet
     if _spreadsheet is None:
-        creds = Credentials.from_service_account_file(
-            config.SERVICE_ACCOUNT_PATH, scopes=config.SCOPES
-        )
+        credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+        if credentials_json:
+            creds_info = json.loads(credentials_json)
+            creds = Credentials.from_service_account_info(creds_info, scopes=config.SCOPES)
+        else:
+            creds = Credentials.from_service_account_file(
+                config.SERVICE_ACCOUNT_PATH, scopes=config.SCOPES
+            )
+        
         _gspread_client = gspread.authorize(creds)
         _spreadsheet = _gspread_client.open_by_key(config.GOOGLE_SHEET_KEY)
     return _spreadsheet
