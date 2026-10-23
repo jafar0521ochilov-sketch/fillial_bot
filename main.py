@@ -25,7 +25,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
-# Render'dagi doimiy domen yoki muhit o'zgaruvchisidan olish
+# Render'dagi doimiy domen yoki muhit o'zgaruvchisidan olish[cite: 2]
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
 WEBAPP_URL = RENDER_EXTERNAL_URL
 
@@ -34,13 +34,13 @@ WEBAPP_URL = RENDER_EXTERNAL_URL
 # ====================================================
 @app.get("/health")
 async def health_check():
-    """cron-job.org orqali serverni 24/7 uyg'oq saqlash manzili"""
+    """cron-job.org orqali serverni 24/7 uyg'oq saqlash manzili[cite: 2]"""
     return {"status": "ok", "service": "Mazzali Bot"}
 
 
 @app.get("/")
 async def serve_mini_app(request: Request):
-    """Mini App bosh oynasi"""
+    """Mini App bosh oynasi[cite: 2]"""
     return templates.TemplateResponse(request, "index.html", {"request": request})
 
 
@@ -49,11 +49,21 @@ async def serve_mini_app(request: Request):
 # ====================================================
 @app.get("/api/dishes")
 async def get_dishes_list():
-    """Google Sheets'dan 135 ta taom va shtrix-kodlarni yuklab berish"""
+    """Google Sheets'dan 135 ta taom va shtrix-kodlarni yuklab berish[cite: 2]"""
     try:
         loop = asyncio.get_running_loop()
         sh = await loop.run_in_executor(None, db.get_spreadsheet)
-        shota_sheet = await loop.run_in_executor(None, sh.worksheet, "Заказ_Шота")
+        
+        # Mavjud varaqlar nomini tekshiramiz va xavfsiz tanlaymiz
+        worksheet_list = await loop.run_in_executor(None, sh.worksheets)
+        sheet_names = [w.title for w in worksheet_list]
+        print(f"📄 Google Sheets'dagi mavjud varaqlar: {sheet_names}")
+
+        target_sheet_name = "Заказ_Шота"
+        if target_sheet_name not in sheet_names and sheet_names:
+            target_sheet_name = sheet_names[0]  # Topilmasa birinchi varaqni oladi
+
+        shota_sheet = await loop.run_in_executor(None, sh.worksheet, target_sheet_name)
         rows = await loop.run_in_executor(None, shota_sheet.get_all_values)
 
         dishes = []
@@ -65,9 +75,10 @@ async def get_dishes_list():
                     "name": r[1].strip(),
                     "barcode": barcode
                 })
+        print(f"✅ Muvaffaqiyatli yuklangan taomlar soni: {len(dishes)}")
         return dishes
     except Exception as e:
-        print(f"⚠️ Taomlarni yuklashda xatolik: {e}")
+        print(f"⚠️ Taomlarni yuklashda xatolik yuz berdi: {e}")
         return []
 
 
@@ -79,7 +90,7 @@ class SubmitItemsRequest(BaseModel):
 
 @app.post("/api/submit_items")
 async def api_submit_items(req: SubmitItemsRequest):
-    """Standart taomlar bo'yicha amallarni saqlash"""
+    """Standart taomlar bo'yicha amallarni saqlash[cite: 2]"""
     for item_name, qty in req.items.items():
         if qty > 0:
             await db.add_transaction(
@@ -99,7 +110,7 @@ class SubmitExtraRequest(BaseModel):
 
 @app.post("/api/submit_extra")
 async def api_submit_extra(req: SubmitExtraRequest):
-    """Qo'shimcha tovarlarni (matnli) tahlil qilib saqlash"""
+    """Qo'shimcha tovarlarni (matnli) tahlil qilib saqlash[cite: 2]"""
     lines = req.text.strip().split("\n")
     for line in lines:
         if "-" in line:
@@ -123,10 +134,10 @@ async def api_submit_extra(req: SubmitExtraRequest):
 
 @app.post("/api/submit_photo")
 async def api_submit_photo(branch: str = Form(...), doc_type: str = Form(...), photo: UploadFile = File(...)):
-    """Nakladnoy yoki tugagan taomlar suratini Gemini orqali o'qish"""
+    """Nakladnoy yoki tugagan taomlar suratini Gemini orqali o'qish[cite: 2]"""
     image_bytes = await photo.read()
 
-    # 135 ta taom nomlarini bazadan olish
+    # 135 ta taom nomlarini bazadan olish[cite: 2]
     loop = asyncio.get_running_loop()
     sh = await loop.run_in_executor(None, db.get_spreadsheet)
     shota_sheet = await loop.run_in_executor(None, sh.worksheet, "Заказ_Шота")
@@ -134,7 +145,7 @@ async def api_submit_photo(branch: str = Form(...), doc_type: str = Form(...), p
     valid_menu = [r[1].strip() for r in rows[1:] if len(r) >= 2 and r[1].strip()]
 
     if doc_type == "Приход_Фото":
-        # Nakladnoydagi taomlar va sonini aniqlash
+        # Nakladnoydagi taomlar va sonini aniqlash[cite: 2]
         items = ocr.parse_receipt_photo(image_bytes, valid_menu_items=valid_menu)
         for it in items:
             name = it.get("item_name")
@@ -150,7 +161,7 @@ async def api_submit_photo(branch: str = Form(...), doc_type: str = Form(...), p
         return {"status": "ok", "items_count": len(items)}
 
     elif doc_type == "Закончившиеся блюда":
-        # Smena davomida tugagan taomlar ro'yxatini aniqlash
+        # Smena davomida tugagan taomlar ro'yxatini aniqlash[cite: 2]
         finished_list = ocr.parse_finished_dishes_photo(image_bytes, valid_menu_items=valid_menu)
         for dish_name in finished_list:
             await db.save_finished_dish(branch=branch, item_name=dish_name)
@@ -164,7 +175,7 @@ async def api_submit_photo(branch: str = Form(...), doc_type: str = Form(...), p
 # ====================================================
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    """Kassir va rahbarlarga Mini App oynasini chiqarish"""
+    """Kassir va rahbarlarga Mini App oynasini chiqarish[cite: 2]"""
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📱 Mazzali tizimini ochish", web_app=WebAppInfo(url=WEBAPP_URL))]
     ])
@@ -181,7 +192,7 @@ async def cmd_start(message: types.Message):
 # 4. FONDAGI GOOGLE SHEETS SINXRONIZATORI
 # ====================================================
 async def sync_background_worker():
-    """Lokal bazadagi navbatni doimiy Google Sheets'ga yuklash"""
+    """Lokal bazadagi navbatni doimiy Google Sheets'ga yuklash[cite: 2]"""
     while True:
         try:
             count = await db.sync_pending_transactions()
@@ -193,25 +204,25 @@ async def sync_background_worker():
 
 
 # ====================================================
-# 5. SERVER VA BOTni ISHGA TUSHIRISH
+# 5. SERVER VA BOTni ISHga TUSHIRISH
 # ====================================================
 async def main():
-    # 1. Lokal bazani tayyorlash
+    # 1. Lokal bazani tayyorlash[cite: 2]
     await db.init_db()
 
-    # 2. Sinxronizatorni orqa fonda yoqish
+    # 2. Sinxronizatorni orqa fonda yoqish[cite: 2]
     asyncio.create_task(sync_background_worker())
 
-    # 3. FastAPI veb-serverini ishga tushirish
+    # 3. FastAPI veb-serverini ishga tushirish[cite: 2]
     port = int(os.getenv("PORT", 8000))
-    server_config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(server_config)
     asyncio.create_task(server.serve())
 
     print(f"🚀 FastAPI server {port}-portda ishga tushdi.")
     print("🤖 Telegram bot xabarlarni qabul qilishga tayyor...")
 
-    # 4. Aiogram botini ishga tushirish
+    # 4. Aiogram botini ishga tushirish[cite: 2]
     await dp.start_polling(bot)
 
 
