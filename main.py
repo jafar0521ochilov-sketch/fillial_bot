@@ -213,8 +213,8 @@ async def main():
     # 2. Sinxronizatorni orqa fonda yoqish[cite: 2]
     asyncio.create_task(sync_background_worker())
 
-    # 3. FastAPI veb-serverini ishga tushirish[cite: 2]
-    port = int(os.getenv("PORT", 8000))
+    # 3. FastAPI veb-serverini Render PORT'iga moslab ishga tushirish
+    port = int(os.getenv("PORT", 10000))
     server_config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(server_config)
     asyncio.create_task(server.serve())
