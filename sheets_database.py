@@ -21,19 +21,33 @@ _spreadsheet = None
 def get_spreadsheet():
     """
     Google Sheets hujjatiga xavfsiz va moslashuvchan ulanish.
-    1. Render.com Environment Variable (GOOGLE_CREDENTIALS_JSON) tekshiriladi.
-    2. Agar u bo'lmasa, lokal credentials.json faylidan o'qiladi.
+    1. Render.com Secret Files manzili (/etc/secrets/credentials.json) tekshiriladi.
+    2. Render Environment Variable (GOOGLE_CREDENTIALS_JSON) tekshiriladi.
+    3. Lokal credentials.json fayli tekshiriladi.
     """
     global _gspread_client, _spreadsheet
     if _spreadsheet is None:
-        credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
-        if credentials_json:
+        scopes = getattr(config, "SCOPES", ["https://www.googleapis.com/auth/spreadsheets"])
+        creds = None
+        
+        # 1. Render Secret Files papkasini tekshirish
+        secret_path = "/etc/secrets/credentials.json"
+        if os.path.exists(secret_path):
+            creds = Credentials.from_service_account_file(secret_path, scopes=scopes)
+        
+        # 2. Environment variable orqali kelgan JSON matnni tekshirish
+        elif os.getenv("GOOGLE_CREDENTIALS_JSON"):
+            credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
             creds_info = json.loads(credentials_json)
-            creds = Credentials.from_service_account_info(creds_info, scopes=config.SCOPES)
-        else:
+            creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+            
+        # 3. Lokal papkadagi faylni tekshirish
+        elif os.path.exists(config.SERVICE_ACCOUNT_PATH):
             creds = Credentials.from_service_account_file(
-                config.SERVICE_ACCOUNT_PATH, scopes=config.SCOPES
+                config.SERVICE_ACCOUNT_PATH, scopes=scopes
             )
+        else:
+            raise FileNotFoundError("❌ Xatolik: Google credentials ma'lumotlari topilmadi!")
         
         _gspread_client = gspread.authorize(creds)
         _spreadsheet = _gspread_client.open_by_key(config.GOOGLE_SHEET_KEY)
@@ -149,25 +163,37 @@ async def sync_pending_transactions():
             synced_ids.append(row["id"])
 
             # Agar bu ertalabki yoki kechki qoldiq bo'lsa, Остатки_Live ni ham yangilash
-            if row["doc_type"] in [config.DOC_TYPES["MORNING_STOCK"], config.DOC_TYPES["EVENING_STOCK"]]:
+            if row["doc_type"] in [config.DOC_TYPES.get("MORNING_STOCK", "Остаток_Утро"), config.DOC_TYPES.get("EVENING_STOCK", "Остаток_Вечер")]:
                 live_updates.append((row["branch"], row["item_name"], row["quantity"]))
 
-        # 1. 'Транзакции' varag'iga yangi qatorlarni qo'shish
-        loop = asyncio.get_running_loop()
-        sh = await loop.run_in_executor(None, get_spreadsheet)
-        tx_sheet = await loop.run_in_executor(None, sh.worksheet, config.SHEET_MASTER_LOG)
-        await loop.run_in_executor(None, tx_sheet.append_rows, sheet_rows)
+        try:
+            # 1. 'Транзакции' varag'iga yangi qatorlarni qo'shish
+            loop = asyncio.get_running_loop()
+            sh = await loop.run_in_executor(None, get_spreadsheet)
+            
+            # Xavfsiz varaq tanlash (agar topilmasa birinchi varaqni olish)
+            worksheet_list = await loop.run_in_executor(None, sh.worksheets)
+            sheet_names = [w.title for w in worksheet_list]
+            target_sheet = config.SHEET_MASTER_LOG if config.SHEET_MASTER_LOG in sheet_names else sheet_names[0]
 
-        # 2. 'Остатки_Live' varag'ini yangilash
-        if live_updates:
-            await _update_live_stock_batch(sh, live_updates)
+            tx_sheet = await loop.run_in_executor(None, sh.worksheet, target_sheet)
+            await loop.run_in_executor(None, tx_sheet.append_rows, sheet_rows)
 
-        # 3. Lokal bazada sinxronizatsiya qilinganini belgilash
-        placeholders = ",".join("?" for _ in synced_ids)
-        await db.execute(f"UPDATE transactions SET is_synced = 1 WHERE id IN ({placeholders})", synced_ids)
-        await db.commit()
+            # 2. 'Остатки_Live' varag'ini yangilash (agar mavjud bo'lsa)
+            if live_updates and config.SHEET_LIVE_STOCK in sheet_names:
+                await _update_live_stock_batch(sh, live_updates)
 
-        return len(synced_ids)
+            # 3. Lokal bazada sinxronizatsiya qilinganini belgilash
+            placeholders = ",".join("?" for _ in synced_ids)
+            await db.execute(f"UPDATE transactions SET is_synced = 1 WHERE id IN ({placeholders})", synced_ids)
+            await db.commit()
+
+            print(f"✅ Google Sheets'ga {len(synced_ids)} ta yozuv muvaffaqiyatli yuborildi.")
+            return len(synced_ids)
+
+        except Exception as e:
+            print(f"❌ Google Sheets sinxronizatsiyasida xatolik: {e}")
+            return 0
 
 
 async def _update_live_stock_batch(spreadsheet, updates):
@@ -175,13 +201,11 @@ async def _update_live_stock_batch(spreadsheet, updates):
     loop = asyncio.get_running_loop()
     live_sheet = await loop.run_in_executor(None, spreadsheet.worksheet, config.SHEET_LIVE_STOCK)
     
-    # Bir marta butun jadvalni o'qib olish (API so'rovlarini kamaytirish uchun)
     all_values = await loop.run_in_executor(None, live_sheet.get_all_values)
     if not all_values:
         return
 
     headers = [h.strip().upper() for h in all_values[0]]
-    # Mahsulot nomi qaysi qatorda ekanini topish (2-qatordan boshlab)
     item_row_map = {row[1].strip().lower(): idx + 1 for idx, row in enumerate(all_values) if len(row) > 1}
 
     cells_to_update = []
@@ -201,15 +225,12 @@ async def _update_live_stock_batch(spreadsheet, updates):
 # ====================================================
 async def calculate_reconciliation(branch: str, days: int = 1):
     """
-    Belgilangan filial va davr uchun kamomad/ortiqchalikni hisoblash:
-    Farq = Haqiqiy kechki qoldiq - (Boshlang'ich qoldiq + Kirim - Rasxod - Spisaniye)
+    Belgilangan filial va davr uchun kamomad/ortiqchalikni hisoblash
     """
     start_date = (datetime.now() - timedelta(days=days - 1)).strftime("%d.%m.%Y")
     
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        
-        # Barcha tegishli harakatlarni olish
         cursor = await db.execute("""
             SELECT item_name, doc_type, SUM(quantity) as total_qty
             FROM transactions
@@ -232,15 +253,17 @@ async def calculate_reconciliation(branch: str, days: int = 1):
         
         dt = r["doc_type"]
         qty = r["total_qty"]
-        if dt == config.DOC_TYPES["MORNING_STOCK"]:
+        
+        # Tiplarni xavfsiz solishtirish
+        if dt in [config.DOC_TYPES.get("MORNING_STOCK"), "Остаток_Утро"]:
             data_by_item[item]["morning"] += qty
-        elif dt == config.DOC_TYPES["INCOME"]:
+        elif dt in [config.DOC_TYPES.get("INCOME"), "Приход"]:
             data_by_item[item]["income"] += qty
-        elif dt == config.DOC_TYPES["EXPENSE_DISHES"]:
+        elif dt in [config.DOC_TYPES.get("EXPENSE_DISHES"), "Расход"]:
             data_by_item[item]["expense"] += qty
-        elif dt == config.DOC_TYPES["WRITE_OFF"]:
+        elif dt in [config.DOC_TYPES.get("WRITE_OFF"), "Списание"]:
             data_by_item[item]["write_off"] += qty
-        elif dt == config.DOC_TYPES["EVENING_STOCK"]:
+        elif dt in [config.DOC_TYPES.get("EVENING_STOCK"), "Остаток_Вечер"]:
             data_by_item[item]["evening"] += qty
 
     results = []
@@ -271,11 +294,12 @@ async def calculate_reconciliation(branch: str, days: int = 1):
 
 
 # ====================================================
-# 5. ESKI MA'LUMOTLARNI TOZALASH (90 KUN)
+# 5. ESKI MA'LUMOTLARNI TOZALASH
 # ====================================================
 async def purge_old_records():
-    """90 kundan oshgan sinxronizatsiya bo'lgan ma'lumotlarni o'chirish"""
-    cutoff_date = (datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)).strftime("%d.%m.%Y")
+    """Eski sinxronizatsiya qilingan ma'lumotlarni tozalash"""
+    retention_days = getattr(config, "DATA_RETENTION_DAYS", 90)
+    cutoff_date = (datetime.now() - timedelta(days=retention_days)).strftime("%d.%m.%Y")
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute("""
             DELETE FROM transactions 
