@@ -1,22 +1,25 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi)
+3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi
 """
 
 import io
 import json
 import time
 import re
+import os
+import asyncio
 from difflib import get_close_matches
 from PIL import Image
 from google import genai
 from google.genai import types
 
 import config
+import sheets_database  # Excel fallback uchun ulash
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# gemini_ocr.py ichidagi AVAILABLE_MODELS qismini shunga almashtiring:
+# Foydalaniladigan Gemini modellari ro'yxati
 AVAILABLE_MODELS = [
     "gemini-3.8-flash",
 ]
@@ -37,6 +40,11 @@ def match_with_menu(recognized_name: str, valid_menu_items: list[str], cutoff: f
 
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+    """
+    Rasmni Gemini orqali o'qishga harakat qiladi.
+    Agar Gemini serverlari ishlamasa (503 yoki boshqa xatoliklar), 
+    avtomatik ravishda B variantga (Excel orqali Google Sheets'ga yuklashga) o'tadi.
+    """
     image = Image.open(io.BytesIO(image_bytes))
     
     branch_instruction = (
@@ -54,7 +62,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         '[{"item_name": "Yemek Adı", "quantity": 10.0}]'
     )
 
-    # Modeller arasında otomatik geçiş (Fallback mechanism)
+    # 1. A variant: Gemini orqali urinib ko'rish
     for model_name in AVAILABLE_MODELS:
         for attempt in range(2):
             try:
@@ -80,6 +88,33 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             except Exception as e:
                 print(f"⚠️ Model {model_name} (Deneme {attempt + 1}) hata verdi: {e}")
                 time.sleep(1)
+
+    # 2. B variant (Fallback): Gemini ishlamasa, Excel (10.10.26.xlsx) orqali Google Sheets'ga yuklash
+    print("⚠️ Gemini serverlari band yoki ishlamayapti. B variant (Excel fallback) ishga tushirilmoqda...")
+    try:
+        fallback_file = "10.10.26.xlsx"
+        if os.path.exists(fallback_file):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                # Asinxron muhitda ishlayotgan bo'lsa
+                success = asyncio.run_coroutine_threadsafe(
+                    sheets_database.upload_excel_to_sheet(fallback_file, sheet_name="Лист1"),
+                    loop
+                ).result()
+            else:
+                # Sinxron muhitda bo'lsa
+                success = asyncio.run(sheets_database.upload_excel_to_sheet(fallback_file, sheet_name="Лист1"))
+            
+            if success:
+                print("✅ B variant muvaffaqiyatli bajarildi: Excel ma'lumotlari Google Sheets'ga yuborildi.")
+        else:
+            print(f"❌ Fallback Excel fayli topilmadi: {fallback_file}")
+    except Exception as ex:
+        print(f"❌ B variantni bajarishda xatolik: {ex}")
 
     print("❌ Hiçbir modelden yanıt alınamadı.")
     return []
