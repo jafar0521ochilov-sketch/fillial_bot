@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mazzali AI System</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: var(--tg-theme-bg-color, #f8fafc);
+      color: var(--tg-theme-text-color, #0f172a);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+  </style>
+</head>
+<body class="p-4 pb-32">
+
+  <!-- TOP HEADER -->
+  <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        <h1 class="font-extrabold text-sm text-slate-800 tracking-tight">Mazzali AI System</h1>
+      </div>
+      <span class="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full border border-blue-200">
+        OCR & Control
+      </span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Филиал</label>
+        <select id="branchSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500">
+          <option value="Паркент">Паркент</option>
+          <option value="Ц-6">Ц-6</option>
+          <option value="Шота">Шота</option>
+          <option value="Ц-1">Ц-1</option>
+          <option value="КФС">КФС</option>
+          <option value="Ардус">Ардус</option>
+          <option value="Аския">Аския</option>
+          <option value="Махтумкули">Махтумкули</option>
+          <option value="Чехов">Чехов</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Операция</label>
+        <select id="docTypeSelect" onchange="handleDocTypeChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500">
+          <option value="MORNING_STOCK">🌅 Утренний остаток (Фото)</option>
+          <option value="INCOME">📥 Приход по накладной (Фото)</option>
+          <option value="EVENING_STOCK">🌙 Вечерний остаток (Фото)</option>
+          <option value="FACTORY_ORDER">🏭 Заказ Fabrika (Buyurtma)</option>
+          <option value="CLOSE_SHIFT">⚖️ Смена topshirish (Сверка)</option>
+          <option value="FINISHED_DISHES">📸 Закончившиеся блюда (Фото)</option>
+          <option value="TRANSFER">🔄 Перемещение (Ko'chirish)</option>
+          <option value="EXTRA_GOODS">✍️ Дополнительный товар (Вручную)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- KO'CHIRISH UCHUN QABUL QILUVCHI FILIAL -->
+    <div id="targetBranchWrapper" class="hidden border-t pt-2 mt-2">
+      <label class="block text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">➡️ Qaysi filialga ko'chirilmoqda?</label>
+      <select id="targetBranchSelect" class="w-full bg-blue-50 border border-blue-200 rounded-xl p-2 text-xs font-bold text-blue-900 outline-none">
+        <option value="Паркент">Паркент</option>
+        <option value="Ц-6">Ц-6</option>
+        <option value="Шота">Шота</option>
+        <option value="Ц-1">Ц-1</option>
+        <option value="КФС">КФС</option>
+        <option value="Ардус">Ардус</option>
+        <option value="Аския">Аския</option>
+        <option value="Махтумкули">Махтумкули</option>
+        <option value="Чехов">Чехов</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- FABRIKA ZAKAZI BO'LIMI -->
+  <div id="factoryOrderSection" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-4 space-y-3">
+    <div class="flex items-center justify-between border-b pb-2">
+      <div>
+        <h3 class="font-bold text-xs text-slate-800">🏭 Fabrikaga buyurtma (2 kunlik ehtiyoj)</h3>
+        <p class="text-[10px] text-slate-400">Har bir filial uchun alohida shakllanadi</p>
+      </div>
+      <button type="button" onclick="loadDishesForOrder()" class="px-3 py-1.5 bg-blue-50 text-blue-600 text-[11px] font-bold rounded-lg border border-blue-200">
+        🔄 Ro'yxatni yuklash
+      </button>
+    </div>
+
+    <div id="factoryOrderItemsContainer" class="space-y-2 max-h-[45vh] overflow-y-auto">
+      <p class="text-xs text-slate-400 text-center py-4">Tugmani bosib taomlar ro'yxatini yuklang...</p>
+    </div>
+
+    <button type="button" onclick="submitFactoryOrder()" class="w-full py-3.5 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md">
+      🚀 Fabrikaga zakazni yuborish
+    </button>
+  </div>
+
+  <!-- SMENA TOPSHIRISH (SVERKA) BO'LIMI -->
+  <div id="closeShiftSection" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-4 space-y-3">
+    <div class="border-b pb-2">
+      <h3 class="font-bold text-xs text-slate-800">⚖️ Smena topshirish va Sverka</h3>
+      <p class="text-[10px] text-slate-400">Faktik qoldiqlarni kiriting hamda Snapshot sarfi bilan solishtiring</p>
+    </div>
+
+    <div>
+      <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kassir F.I.Sh.</label>
+      <input type="text" id="cashierNameInput" placeholder="Masalan: Alisher V." class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 mb-3">
+    </div>
+
+    <div id="shiftDishesContainer" class="space-y-2 max-h-[40vh] overflow-y-auto">
+      <p class="text-xs text-slate-400 text-center py-4">Faktik qoldiqlarni kiritish uchun ro'yxatni yuklang...</p>
+    </div>
+
+    <button type="button" onclick="submitShiftClose()" class="w-full py-3.5 bg-emerald-600 active:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md">
+      ✅ Smenani yopish va Sverkani hisoblash
+    </button>
+  </div>
+
+  <!-- QO'SHIMCHA TOVARLAR -->
+  <div id="extraGoodsSection" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-4">
+    <h3 class="font-bold text-xs text-slate-800 mb-1">✍️ Qo'shimcha tovarlar</h3>
+    <p class="text-[11px] text-slate-400 mb-3">Har bir tovarniy yangi qatordan kiriting:<br><code class="text-blue-600 font-bold">Nom - Miqdor</code></p>
+    <textarea id="extraGoodsText" rows="6" placeholder="Konteyner 500ml - 100&#10;Salfetka - 10" 
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none focus:border-blue-500 font-mono mb-3"></textarea>
+    <button type="button" onclick="submitExtraData()" class="w-full py-3 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md">
+      YUBORISH ➔
+    </button>
+  </div>
+
+  <!-- FOTO VA TAHRIRLASH BO'LIMI (OCR VA TRANSFER UCHUN) -->
+  <div id="photoSection" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+    <div class="text-center">
+      <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2 text-2xl">📸</div>
+      <h3 id="photoTitle" class="font-bold text-sm text-slate-800">Hujjat yoki hujjat daftari rasmini yuboring</h3>
+      <p class="text-xs text-slate-400">Gemini AI avtomatik o'qib beradi va tahrirlash imkonini beradi</p>
+    </div>
+    
+    <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="uploadAndParsePhoto(event)">
+    <button type="button" onclick="document.getElementById('photoInput').click()" 
+            class="w-full py-4 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center space-x-2">
+      <span>📷</span>
+      <span>Kamerani ochish va O'qish</span>
+    </button>
+    
+    <div id="parsingLoader" class="hidden text-center py-6 text-xs text-blue-600 font-bold animate-pulse">
+      🤖 Gemini AI hujjatni tahlil qilmoqda, iltimos kuting...
+    </div>
+
+    <div id="parsedItemsContainer" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.expand(); tg.ready(); }
+
+    let globalDishes = [];
+
+    function handleDocTypeChange() {
+      const dt = document.getElementById('docTypeSelect').value;
+      
+      document.getElementById('extraGoodsSection').classList.toggle('hidden', dt !== 'EXTRA_GOODS');
+      document.getElementById('factoryOrderSection').classList.toggle('hidden', dt !== 'FACTORY_ORDER');
+      document.getElementById('closeShiftSection').classList.toggle('hidden', dt !== 'CLOSE_SHIFT');
+      document.getElementById('targetBranchWrapper').classList.toggle('hidden', dt !== 'TRANSFER');
+
+      const isPhotoDoc = ['MORNING_STOCK', 'INCOME', 'EVENING_STOCK', 'EXPENSE_DISHES', 'WRITE_OFF', 'FINISHED_DISHES', 'TRANSFER'].includes(dt);
+      document.getElementById('photoSection').classList.toggle('hidden', !isPhotoDoc);
+
+      if (dt === 'FACTORY_ORDER' && globalDishes.length === 0) {
+        loadDishesForOrder();
+      } else if (dt === 'CLOSE_SHIFT' && globalDishes.length === 0) {
+        loadDishesForShift();
+      }
+    }
+
+    async function loadDishesForOrder() {
+      const container = document.getElementById('factoryOrderItemsContainer');
+      container.innerHTML = '<p class="text-xs text-blue-600 font-bold text-center py-3 animate-pulse">Taomlar ro\'yxati yuklanmoqda...</p>';
+      
+      try {
+        const res = await fetch('/api/dishes');
+        globalDishes = await res.json();
+        
+        container.innerHTML = '';
+        globalDishes.forEach((d, idx) => {
+          container.innerHTML += `
+            <div class="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span class="text-xs font-bold text-slate-800 flex-1 pr-2">${d.name}</span>
+              <input type="number" step="any" placeholder="0" id="order-qty-${idx}" data-name="${d.name}" class="w-20 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
+            </div>
+          `;
+        });
+      } catch (e) {
+        container.innerHTML = '<p class="text-xs text-red-500 font-bold text-center py-2">Xatolik: taomlar yuklanmadi!</p>';
+      }
+    }
+
+    async function loadDishesForShift() {
+      const container = document.getElementById('shiftDishesContainer');
+      container.innerHTML = '<p class="text-xs text-blue-600 font-bold text-center py-3 animate-pulse">Ro\'yxat yuklanmoqda...</p>';
+      
+      try {
+        const res = await fetch('/api/dishes');
+        globalDishes = await res.json();
+        
+        container.innerHTML = '';
+        globalDishes.forEach((d, idx) => {
+          container.innerHTML += `
+            <div class="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span class="text-xs font-bold text-slate-800 flex-1 pr-2">${d.name}</span>
+              <input type="number" step="any" placeholder="Fakt qoldiq" id="shift-fact-${idx}" data-name="${d.name}" class="w-24 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
+            </div>
+          `;
+        });
+      } catch (e) {
+        container.innerHTML = '<p class="text-xs text-red-500 font-bold text-center py-2">Xatolik: taomlar yuklanmadi!</p>';
+      }
+    }
+
+    async function submitFactoryOrder() {
+      const branch = document.getElementById('branchSelect').value;
+      const items = {};
+      
+      globalDishes.forEach((d, idx) => {
+        const input = document.getElementById(`order-qty-${idx}`);
+        if (input) {
+          const qty = parseFloat(input.value);
+          if (!isNaN(qty) && qty > 0) {
+            items[d.name] = qty;
+          }
+        }
+      });
+
+      if (Object.keys(items).length === 0) {
+        alert("Kamida bitta mahsulot uchun zakaz miqdorini kiriting!");
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/submit_factory_order', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ branch, items })
+        });
+        const result = await res.json();
+        
+        if (result.status === 'ok') {
+          tg.showAlert(`✅ ${branch} filiali uchun Fabrika zakazi yuborildi!`, () => location.reload());
+        } else {
+          alert("❌ Google Sheets sahifasi topilmadi!");
+        }
+      } catch (e) {
+        alert("❌ Serverga yuborishda xatolik!");
+      }
+    }
+
+    async function submitShiftClose() {
+      const branch = document.getElementById('branchSelect').value;
+      const cashier = document.getElementById('cashierNameInput').value;
+      
+      if (!cashier.trim()) {
+        alert("Kassir F.I.Sh. kiriting!");
+        return;
+      }
+
+      const factual_items = {};
+      const current_counters = {};
+
+      globalDishes.forEach((d, idx) => {
+        const input = document.getElementById(`shift-fact-${idx}`);
+        if (input) {
+          const qty = parseFloat(input.value);
+          if (!isNaN(qty)) {
+            factual_items[d.name] = qty;
+            current_counters[d.name] = qty; // Snapshot uchun
+          }
+        }
+      });
+
+      try {
+        const res = await fetch('/api/close_shift_reconcile', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ branch, cashier, factual_items, current_counters })
+        });
+        const result = await res.json();
+        
+        if (result.status === 'ok') {
+          tg.showAlert(`✅ Smena yopildi! Sverka natijalari bazaga saqlandi.`, () => location.reload());
+        } else {
+          alert("❌ Xatolik: " + result.message);
+        }
+      } catch (e) {
+        alert("❌ Serverga yuborishda xatolik!");
+      }
+    }
+
+    async function uploadAndParsePhoto(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const branch = document.getElementById('branchSelect').value;
+      const dt = document.getElementById('docTypeSelect').value;
+      
+      const formData = new FormData();
+      formData.append('branch', branch);
+      formData.append('doc_type', dt);
+      formData.append('photo', file);
+
+      document.getElementById('parsingLoader').classList.remove('hidden');
+      document.getElementById('parsedItemsContainer').innerHTML = '';
+
+      try {
+        let res = await fetch('/api/parse_photo', { method: 'POST', body: formData });
+        let data = await res.json();
+        document.getElementById('parsingLoader').classList.add('hidden');
+
+        if (data.items && data.items.length > 0) {
+          renderParsedItems(data.items);
+        } else {
+          alert("Rasmdan ma'lumot topilmadi. Qayta urinib ko'ring.");
+        }
+      } catch (e) {
+        document.getElementById('parsingLoader').classList.add('hidden');
+        alert("Server bilan bog'lanishda xatolik!");
+      }
+    }
+
+    function renderParsedItems(items) {
+      const container = document.getElementById('parsedItemsContainer');
+      container.innerHTML = '<p class="text-xs font-bold text-slate-600 mb-2">📋 Topilgan taomlar va miqdorlar (zarur bo\'lsa tahrirlang):</p>';
+      
+      items.forEach((item, index) => {
+        container.innerHTML += `
+          <div class="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200" id="item-row-${index}">
+            <input type="text" value="${item.item_name}" id="p-name-${index}" class="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-blue-500">
+            <input type="number" step="any" value="${item.quantity}" id="p-qty-${index}" class="w-20 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
+            <button type="button" onclick="removeItemRow(${index})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 font-bold flex items-center justify-center text-xs">✕</button>
+          </div>
+        `;
+      });
+      
+      container.innerHTML += `
+        <button type="button" onclick="submitParsedData(${items.length})" class="w-full mt-4 py-3.5 bg-emerald-600 active:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md">
+          ✅ Tasdiqlash va Google Sheets'ga yuborish
+        </button>
+      `;
+    }
+
+    async function submitParsedData(totalCount) {
+      const branch = document.getElementById('branchSelect').value;
+      const dt = document.getElementById('docTypeSelect').value;
+      const targetBranch = document.getElementById('targetBranchSelect').value;
+      let items = [];
+
+      for (let i = 0; i < totalCount; i++) {
+        let nameEl = document.getElementById(`p-name-${i}`);
+        let qtyEl = document.getElementById(`p-qty-${i}`);
+        if (nameEl && qtyEl) {
+          let name = nameEl.value;
+          let qty = parseFloat(qtyEl.value);
+          if (name && !isNaN(qty) && qty > 0) {
+            items.push({ item_name: name, quantity: qty });
+          }
+        }
+      }
+
+      if (items.length === 0) {
+        alert("Kamida bitta to'g'ri qiymat kiritilishi kerak!");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('branch', branch);
+      formData.append('target_branch', targetBranch);
+      formData.append('doc_type', dt);
+      formData.append('items_json', JSON.stringify(items));
+
+      try {
+        let res = await fetch('/api/submit_photo_parsed', { method: 'POST', body: formData });
+        let result = await res.json();
+
+        if (result.status === 'ok') {
+          tg.showAlert("✅ Muvaffaqiyatli saqlandi va sinxronizatsiyaga yuborildi!", () => {
+            location.reload();
+          });
+        } else {
+          alert("❌ Xatolik yuz berdi!");
+        }
+      } catch (err) {
+        alert("❌ Serverga yuborishda xatolik!");
+      }
+    }
+
+    async function submitExtraData() {
+      const branch = document.getElementById('branchSelect').value;
+      const text = document.getElementById('extraGoodsText').value;
+      if (!text.trim()) {
+        alert("Ma'lumot kiriting!");
+        return;
+      }
+
+      try {
+        await fetch('/api/submit_extra', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ branch, text })
+        });
+        tg.showAlert("✅ Qo'shimcha tovarlar saqlandi!", () => {
+          location.reload();
+        });
+      } catch (err) {
+        alert("❌ Xatolik yuz berdi!");
+      }
+    }
+  </script>
+</body>
+</html>

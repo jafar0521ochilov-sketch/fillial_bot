@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+aiogram
+aiosqlite
+python-dotenv
+google-genai
+openpyxl
+pandas
+pillow
+gspread
+google-auth
+
