@@ -389,3 +389,34 @@ async def purge_old_records():
         """, (cutoff_date,))
         await db.commit()
     print("🧹 Eski sinxronizatsiya qilingan yozuvlar tozalandi.")
+
+
+async def upload_excel_to_sheet(file_path: str, sheet_name: str = "Лист1"):
+    """
+    Excel faylini (.xlsx) Gemini'siz to'g'ridan-to'g'ri Google Sheets'ning ko'rsatilgan varaqasiga yuklaydi.
+    """
+    try:
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        df = df.fillna("")
+        
+        loop = asyncio.get_running_loop()
+        sh = await loop.run_in_executor(None, get_spreadsheet)
+        
+        worksheet_list = await loop.run_in_executor(None, sh.worksheets)
+        sheet_names = [w.title for w in worksheet_list]
+        
+        if sheet_name not in sheet_names:
+            ws = await loop.run_in_executor(None, sh.add_worksheet, sheet_name, len(df)+10, len(df.columns)+5)
+        else:
+            ws = await loop.run_in_executor(None, sh.worksheet, sheet_name)
+            
+        data_to_update = [df.columns.values.tolist()] + df.values.tolist()
+        
+        await loop.run_in_executor(None, ws.clear)
+        await loop.run_in_executor(None, ws.update, data_to_update)
+        
+        print(f"✅ '{file_path}' faylidagi ma'lumotlar Google Sheets'ga muvaffaqiyatli yuklandi!")
+        return True
+    except Exception as e:
+        print(f"❌ Excel faylni Google Sheets'ga yuklashda xatolik: {e}")
+        return False
