@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi + Timeout (20s)
+3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi + Timeout (20s) + Auto-Splitting
 """
 
 import io
@@ -42,13 +42,22 @@ def match_with_menu(recognized_name: str, valid_menu_items: list[str], cutoff: f
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasmni Gemini orqali o'qishga harakat qiladi. 
-    Agar 20 sekund ichida javob bo'lmasa, vaqt tugashi (timeout) 
-    orqali darhol B variantga (Excel fallback) o'tadi.
+    Katta rasmni avtomatik ravishda bo'laklarga bo'lib, Gemini orqali tezkor o'qiydi.
+    Agar 20 sekund ichida javob bo'lmasa, Excel fallback'ga o'tadi.
     """
     image = Image.open(io.BytesIO(image_bytes))
     image.thumbnail((1024, 1024))  # Hajmini kichiklashtirish
     
+    width, height = image.size
+    
+    # Rasm uzun bo'lsa, uni avtomatik ravishda 2 qismga (yuqori va pastki) bo'lamiz
+    images_to_process = [image]
+    if height > 600:
+        half_height = height // 2
+        img_top = image.crop((0, 0, width, half_height + 50))
+        img_bottom = image.crop((0, half_height - 50, width, height))
+        images_to_process = [img_top, img_bottom]
+
     branch_instruction = (
         f"Bu genel çok şubeli bir rapor veya sütunlu bir faturadır. "
         f"'{branch_name}' şubesine ait olan sütunu dikkatlice bul. "
@@ -64,12 +73,12 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         '[{"item_name": "Yemek Adı", "quantity": 10.0}]'
     )
 
-    def _call_gemini():
+    def _call_gemini_for_part(img_part):
         for model_name in AVAILABLE_MODELS:
-            for attempt in range(1):
+            try:
                 response = ai_client.models.generate_content(
                     model=model_name,
-                    contents=[image, prompt],
+                    contents=[img_part, prompt],
                     config=types.GenerateContentConfig(
                         temperature=0.1,
                         max_output_tokens=4096,
@@ -78,25 +87,33 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 )
                 clean_text = _clean_json_response(response.text)
                 items = json.loads(clean_text)
-
-                if valid_menu_items and isinstance(items, list):
-                    for item in items:
-                        item["item_name"] = match_with_menu(item.get("item_name", ""), valid_menu_items)
-
-                return items if isinstance(items, list) else []
+                if isinstance(items, list):
+                    return items
+            except Exception as e:
+                print(f"⚠️ Bo'lakni o'qishda xatolik: {e}")
         return []
 
-    # 20 sekunddan ortiq cho'zilib ketsa, jarayonni to'xtatib B variantga o'tish uchun ThreadPool
+    all_items = []
+
+    # 20 sekundlik taymer (timeout) bilan bo'laklarni parallel qayta ishlash
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_call_gemini)
-            items = future.result(timeout=20)  # Maksimal 20 sekund kutamiz
-            if items:
-                return items
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(_call_gemini_for_part, img) for img in images_to_process]
+            for future in concurrent.futures.as_completed(futures, timeout=20):
+                part_items = future.result()
+                if part_items:
+                    all_items.extend(part_items)
     except Exception as e:
         print(f"⚠️ Gemini vaqti tugadi yoki xato berdi: {e}")
 
-    # B variant (Fallback): Gemini o'qiy olmasa yoki 20 sekunddan oshib ketsa, Excel orqali yuborish
+    # Agar ma'lumotlar topilsa, ularni menyu bo'yicha moslab qaytaramiz
+    if all_items:
+        if valid_menu_items:
+            for item in all_items:
+                item["item_name"] = match_with_menu(item.get("item_name", ""), valid_menu_items)
+        return all_items
+
+    # B variant (Fallback): Gemini o'qiy olmasa yoki vaqt tugasa, Excel orqali yuborish
     print("⚠️ B variant (Excel fallback) ishga tushirilmoqda...")
     try:
         fallback_file = "10.10.26.xlsx"
