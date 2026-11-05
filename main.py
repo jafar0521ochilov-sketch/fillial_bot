@@ -1,6 +1,6 @@
 """
 main.py - Mazzali Telegram Mini App & Bot
-Обновлённый модуль: FastAPI веб-сервер + Aiogram 3 бот + Планировщик уведомлений + Matnli tugmalar
+Обновлённый модуль: FastAPI веб-сервер + Aiogram 3 бот + Планировщик уведомлений + AI Yordamchi handler'lari
 """
 
 import asyncio
@@ -79,6 +79,18 @@ async def cmd_open_webapp(message: types.Message):
         [InlineKeyboardButton(text="📱 Mini App'ni ochish", web_app=WebAppInfo(url=WEBAPP_URL))]
     ])
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
+
+
+# Har qanday boshqa matnli xabarlarni Gemini AI orqali qayta ishlash (AI Yordamchi)
+@dp.message(F.text)
+async def handle_text_messages(message: types.Message):
+    # Agar maxsus tugmalar bosilgan bo'lsa, ularni o'tkazib yuborish
+    if message.text in ["📊 Сверка / Недостача", "📈 Живые остатки (Live)", "🤖 Gemini AI Yordamchi", "🧹 Bazani tozalash", "📱 Mazzali Mini App'ni ochish"]:
+        return
+    
+    await message.answer("⏳ Gemini AI javob tayyorlamoqda...")
+    ai_response = ocr.ask_gemini_agent(message.text, context_data="Mazzali restoran va ombor tizimi.")
+    await message.answer(ai_response, reply_markup=main_kb)
 
 
 # ====================================================
