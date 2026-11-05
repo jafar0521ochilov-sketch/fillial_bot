@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi
+3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi + Rasm optimizatsiyasi
 """
 
 import io
@@ -45,7 +45,9 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
     Agar Gemini serverlari ishlamasa (503 yoki boshqa xatoliklar), 
     avtomatik ravishda B variantga (Excel orqali Google Sheets'ga yuklashga) o'tadi.
     """
+    # Rasmni ochib o'lchamini kichiklashtiramiz (tezlikni keskin oshiradi)
     image = Image.open(io.BytesIO(image_bytes))
+    image.thumbnail((1024, 1024))  # Maksimal hajmni cheklash
     
     branch_instruction = (
         f"Bu genel çok şubeli bir rapor veya sütunlu bir faturadır. "
@@ -121,7 +123,10 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
 
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
+    # Rasmni ochib o'lchamini kichiklashtiramiz (tezlikni keskin oshiradi)
     image = Image.open(io.BytesIO(image_bytes))
+    image.thumbnail((1024, 1024))  # Maksimal hajmni cheklash
+
     prompt = (
         "Bu fotoğrafta vardiya sırasında tükenen yemekler gösterilmektedir. "
         "Tüm yemek isimlerini tespit et ve saf JSON dizisi olarak döndür:\n"
