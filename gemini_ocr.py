@@ -16,12 +16,10 @@ import config
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Server yoğunluğuna karşı sırayla denenecek modeller listesi
+# gemini_ocr.py ichidagi AVAILABLE_MODELS qismini shunga almashtiring:
 AVAILABLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-3.8-flash"
+    "gemini-2.5-flash",  # yoki yangi versiyalar
+    "gemini-2.5-pro",
 ]
 
 
