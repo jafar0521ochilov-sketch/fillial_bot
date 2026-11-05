@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi + Rasm optimizatsiyasi
+3-Modul: Gemini Vision (OCR) va AI Agent (Chat Yordamchisi) + Excel Fallback Mekanizmi + Timeout (20s)
 """
 
 import io
@@ -9,6 +9,7 @@ import time
 import re
 import os
 import asyncio
+import concurrent.futures
 from difflib import get_close_matches
 from PIL import Image
 from google import genai
@@ -41,13 +42,12 @@ def match_with_menu(recognized_name: str, valid_menu_items: list[str], cutoff: f
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasmni Gemini orqali o'qishga harakat qiladi.
-    Agar Gemini serverlari ishlamasa (503 yoki boshqa xatoliklar), 
-    avtomatik ravishda B variantga (Excel orqali Google Sheets'ga yuklashga) o'tadi.
+    Rasmni Gemini orqali o'qishga harakat qiladi. 
+    Agar 20 sekund ichida javob bo'lmasa, vaqt tugashi (timeout) 
+    orqali darhol B variantga (Excel fallback) o'tadi.
     """
-    # Rasmni ochib o'lchamini kichiklashtiramiz (tezlikni keskin oshiradi)
     image = Image.open(io.BytesIO(image_bytes))
-    image.thumbnail((1024, 1024))  # Maksimal hajmni cheklash
+    image.thumbnail((1024, 1024))  # Hajmini kichiklashtirish
     
     branch_instruction = (
         f"Bu genel çok şubeli bir rapor veya sütunlu bir faturadır. "
@@ -64,20 +64,18 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         '[{"item_name": "Yemek Adı", "quantity": 10.0}]'
     )
 
-    # 1. A variant: Gemini orqali urinib ko'rish
-    for model_name in AVAILABLE_MODELS:
-        for attempt in range(2):
-            try:
+    def _call_gemini():
+        for model_name in AVAILABLE_MODELS:
+            for attempt in range(1):
                 response = ai_client.models.generate_content(
                     model=model_name,
                     contents=[image, prompt],
                     config=types.GenerateContentConfig(
                         temperature=0.1,
-                        max_output_tokens=8192,
+                        max_output_tokens=4096,
                         response_mime_type="application/json"
                     )
                 )
-                
                 clean_text = _clean_json_response(response.text)
                 items = json.loads(clean_text)
 
@@ -86,13 +84,20 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                         item["item_name"] = match_with_menu(item.get("item_name", ""), valid_menu_items)
 
                 return items if isinstance(items, list) else []
+        return []
 
-            except Exception as e:
-                print(f"⚠️ Model {model_name} (Deneme {attempt + 1}) hata verdi: {e}")
-                time.sleep(1)
+    # 20 sekunddan ortiq cho'zilib ketsa, jarayonni to'xtatib B variantga o'tish uchun ThreadPool
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_call_gemini)
+            items = future.result(timeout=20)  # Maksimal 20 sekund kutamiz
+            if items:
+                return items
+    except Exception as e:
+        print(f"⚠️ Gemini vaqti tugadi yoki xato berdi: {e}")
 
-    # 2. B variant (Fallback): Gemini ishlamasa, Excel (10.10.26.xlsx) orqali Google Sheets'ga yuklash
-    print("⚠️ Gemini serverlari band yoki ishlamayapti. B variant (Excel fallback) ishga tushirilmoqda...")
+    # B variant (Fallback): Gemini o'qiy olmasa yoki 20 sekunddan oshib ketsa, Excel orqali yuborish
+    print("⚠️ B variant (Excel fallback) ishga tushirilmoqda...")
     try:
         fallback_file = "10.10.26.xlsx"
         if os.path.exists(fallback_file):
@@ -102,23 +107,18 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 loop = None
 
             if loop and loop.is_running():
-                # Asinxron muhitda ishlayotgan bo'lsa
                 success = asyncio.run_coroutine_threadsafe(
                     sheets_database.upload_excel_to_sheet(fallback_file, sheet_name="Лист1"),
                     loop
                 ).result()
             else:
-                # Sinxron muhitda bo'lsa
                 success = asyncio.run(sheets_database.upload_excel_to_sheet(fallback_file, sheet_name="Лист1"))
             
             if success:
                 print("✅ B variant muvaffaqiyatli bajarildi: Excel ma'lumotlari Google Sheets'ga yuborildi.")
-        else:
-            print(f"❌ Fallback Excel fayli topilmadi: {fallback_file}")
     except Exception as ex:
         print(f"❌ B variantni bajarishda xatolik: {ex}")
 
-    print("❌ Hiçbir modelden yanıt alınamadı.")
     return []
 
 
