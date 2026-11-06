@@ -81,16 +81,23 @@ async def cmd_open_webapp(message: types.Message):
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
 
 
-# Telegram botga rasm tashlanganda ishlaydigan tezkor handler (Excel fallback orqali qotib qolishning oldini oladi)
+# Telegram botga rasm tashlanganda ishlaydigan to'g'rilangan handler
 @dp.message(F.photo)
 async def handle_photo_messages(message: types.Message):
     await message.answer("⏳ Rasm qabul qilindi, Excel zaxira usuli orqali Google Sheets'ga yuklanmoqda...")
     
     try:
-        # Excel fallback orqali to'g'ridan-to'g'ri bazaga yuborish
         fallback_file = "10.10.26.xlsx"
         if os.path.exists(fallback_file):
-            success = await db.upload_excel_to_sheet(fallback_file, sheet_name="Лист1")
+            loop = asyncio.get_running_loop()
+            # Sinxron funksiyani asinxron tarzda to'g'ri chaqirish
+            success = await loop.run_in_executor(
+                None, 
+                db.upload_excel_to_sheet, 
+                fallback_file, 
+                "Лист1"
+            )
+            
             if success:
                 await message.answer("✅ Rasm hajmi juda katta bo'lgani uchun zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
             else:
