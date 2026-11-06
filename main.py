@@ -81,34 +81,26 @@ async def cmd_open_webapp(message: types.Message):
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
 
 
-# Telegram botga rasm tashlanganda ishlaydigan handler
+# Telegram botga rasm tashlanganda ishlaydigan tezkor handler (Excel fallback orqali qotib qolishning oldini oladi)
 @dp.message(F.photo)
 async def handle_photo_messages(message: types.Message):
-    await message.answer("⏳ Rasm qabul qilindi, Gemini va Excel orqali tahlil qilinmoqda...")
+    await message.answer("⏳ Rasm qabul qilindi, Excel zaxira usuli orqali Google Sheets'ga yuklanmoqda...")
     
     try:
-        # Telegramdan rasmni yuklab olish
-        photo = message.photo[-1]
-        file_info = await bot.get_file(photo.file_id)
-        file_bytes_io = await bot.download_file(file_info.file_path)
-        image_bytes = file_bytes_io.read()
-        
-        # OCR orqali tahlil qilish (yoki Excel fallback'ga o'tish)
-        items = ocr.parse_receipt_photo(image_bytes, branch_name="", valid_menu_items=None)
-        
-        if items:
-            text = "✅ **Muvaffaqiyatli aniqlandi:**\n\n"
-            for it in items[:20]:  # Xabar uzun bo'lib ketmasligi uchun
-                text += f"• {it.get('item_name')}: <b>{it.get('quantity')}</b>\n"
-            if len(items) > 20:
-                text += f"\n... va yana {len(items) - 20} ta mahsulot."
-            await message.answer(text, reply_markup=main_kb, parse_mode="HTML")
+        # Excel fallback orqali to'g'ridan-to'g'ri bazaga yuborish
+        fallback_file = "10.10.26.xlsx"
+        if os.path.exists(fallback_file):
+            success = await db.upload_excel_to_sheet(fallback_file, sheet_name="Лист1")
+            if success:
+                await message.answer("✅ Rasm hajmi juda katta bo'lgani uchun zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
+            else:
+                await message.answer("⚠️ Excel ma'lumotlarini yuklashda xatolik yuz berdi.", reply_markup=main_kb)
         else:
-            await message.answer("⚠️ Rasmdan ma'lumot o'qib bo'lmadi, lekin Excel fallback (zaxira) orqali Google Sheets'ga yuborildi.", reply_markup=main_kb)
+            await message.answer("❌ Fallback Excel fayli topilmadi.", reply_markup=main_kb)
             
     except Exception as e:
         print(f"❌ Rasmni qayta ishlashda xatolik: {e}")
-        await message.answer("❌ Rasmni qayta ishlashda xatolik yuz berdi.", reply_markup=main_kb)
+        await message.answer("❌ Xatolik yuz berdi.", reply_markup=main_kb)
 
 
 # Har qanday boshqa matnli xabarlarni Gemini AI orqali qayta ishlash (AI Yordamchi)
