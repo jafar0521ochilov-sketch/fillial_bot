@@ -1,6 +1,6 @@
 """
 main.py - Mazzali Telegram Mini App & Bot
-Обновлённый модуль: FastAPI веб-сервер + Aiogram 3 бот + Планировщик уведомлений + AI Yordamchi handler'lari
+Обновлённый модуль: FastAPI веб-сервер + Aiogram 3 бот + Планировщик уведомлений + AI Yordamchi va Rasm handler'lari
 """
 
 import asyncio
@@ -79,6 +79,36 @@ async def cmd_open_webapp(message: types.Message):
         [InlineKeyboardButton(text="📱 Mini App'ni ochish", web_app=WebAppInfo(url=WEBAPP_URL))]
     ])
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
+
+
+# Telegram botga rasm tashlanganda ishlaydigan handler
+@dp.message(F.photo)
+async def handle_photo_messages(message: types.Message):
+    await message.answer("⏳ Rasm qabul qilindi, Gemini va Excel orqali tahlil qilinmoqda...")
+    
+    try:
+        # Telegramdan rasmni yuklab olish
+        photo = message.photo[-1]
+        file_info = await bot.get_file(photo.file_id)
+        file_bytes_io = await bot.download_file(file_info.file_path)
+        image_bytes = file_bytes_io.read()
+        
+        # OCR orqali tahlil qilish (yoki Excel fallback'ga o'tish)
+        items = ocr.parse_receipt_photo(image_bytes, branch_name="", valid_menu_items=None)
+        
+        if items:
+            text = "✅ **Muvaffaqiyatli aniqlandi:**\n\n"
+            for it in items[:20]:  # Xabar uzun bo'lib ketmasligi uchun
+                text += f"• {it.get('item_name')}: <b>{it.get('quantity')}</b>\n"
+            if len(items) > 20:
+                text += f"\n... va yana {len(items) - 20} ta mahsulot."
+            await message.answer(text, reply_markup=main_kb, parse_mode="HTML")
+        else:
+            await message.answer("⚠️ Rasmdan ma'lumot o'qib bo'lmadi, lekin Excel fallback (zaxira) orqali Google Sheets'ga yuborildi.", reply_markup=main_kb)
+            
+    except Exception as e:
+        print(f"❌ Rasmni qayta ishlashda xatolik: {e}")
+        await message.answer("❌ Rasmni qayta ishlashda xatolik yuz berdi.", reply_markup=main_kb)
 
 
 # Har qanday boshqa matnli xabarlarni Gemini AI orqali qayta ishlash (AI Yordamchi)
