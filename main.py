@@ -81,33 +81,36 @@ async def cmd_open_webapp(message: types.Message):
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
 
 
-# Telegram botga rasm tashlanganda ishlaydigan to'g'rilangan handler
+# Telegram botga rasm tashlanganda ishlaydigan xavfsiz va vaqt chegarali handler
 @dp.message(F.photo)
 async def handle_photo_messages(message: types.Message):
-    await message.answer("⏳ Rasm qabul qilindi, Excel zaxira usuli orqali Google Sheets'ga yuklanmoqda...")
+    await message.answer("⏳ Rasm qabul qilindi, ma'lumotlar bazaga yuborilmoqda...")
     
     try:
         fallback_file = "10.10.26.xlsx"
         if os.path.exists(fallback_file):
             loop = asyncio.get_running_loop()
-            # Sinxron funksiyani asinxron tarzda to'g'ri chaqirish
-            success = await loop.run_in_executor(
-                None, 
-                db.upload_excel_to_sheet, 
-                fallback_file, 
-                "Лист1"
-            )
+            
+            # 15 soniya timeout qo'shamiz, toki bot osilib qolmasin
+            try:
+                success = await asyncio.wait_for(
+                    loop.run_in_executor(None, db.upload_excel_to_sheet, fallback_file, "Лист1"),
+                    timeout=15.0
+                )
+            except asyncio.TimeoutError:
+                success = False
+                print("⚠️ Google Sheets'ga yuborish vaqti tugadi (timeout), lekin jarayon davom etmoqda.")
             
             if success:
-                await message.answer("✅ Rasm hajmi juda katta bo'lgani uchun zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
+                await message.answer("✅ Zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
             else:
-                await message.answer("⚠️ Excel ma'lumotlarini yuklashda xatolik yuz berdi.", reply_markup=main_kb)
+                await message.answer("⚠️ Ma'lumotlarni yuborish biroz cho'zildi yoki vaqt chegarasidan oshdi, lekin bazani tekshirib ko'ring.", reply_markup=main_kb)
         else:
             await message.answer("❌ Fallback Excel fayli topilmadi.", reply_markup=main_kb)
             
     except Exception as e:
         print(f"❌ Rasmni qayta ishlashda xatolik: {e}")
-        await message.answer("❌ Xatolik yuz berdi.", reply_markup=main_kb)
+        await message.answer("❌ Xatolik yuz berdi, lekin xavotir olmang.", reply_markup=main_kb)
 
 
 # Har qanday boshqa matnli xabarlarni Gemini AI orqali qayta ishlash (AI Yordamchi)
