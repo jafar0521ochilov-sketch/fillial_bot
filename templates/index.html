@@ -143,12 +143,12 @@
       <p class="text-xs text-slate-400">Gemini AI avtomatik o'qib beradi va tahrirlash imkonini beradi</p>
     </div>
     
-    <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="uploadAndParsePhoto(event)">
-    <button type="button" onclick="document.getElementById('photoInput').click()" 
-            class="w-full py-4 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center space-x-2">
+   <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="uploadAndParsePhoto(event)">
+    <label for="photoInput" 
+           class="w-full py-4 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer">
       <span>📷</span>
       <span>Kamerani ochish va O'qish</span>
-    </button>
+    </label>
     
     <div id="parsingLoader" class="hidden text-center py-6 text-xs text-blue-600 font-bold animate-pulse">
       🤖 Gemini AI hujjatni tahlil qilmoqda, iltimos kuting...
