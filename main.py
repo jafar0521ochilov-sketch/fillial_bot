@@ -1,6 +1,5 @@
 """
-main.py - Mazzali Telegram Mini App & Bot
-Обновлённый модуль: FastAPI веб-сервер + Aiogram 3 бот + Планировщик уведомлений + AI Yordamchi va Rasm handler'lari
+main.py - Mazzali Telegram Mini App & Bot (Webhook Rejimi)
 """
 
 import asyncio
@@ -29,6 +28,26 @@ dp = Dispatcher()
 
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
 WEBAPP_URL = RENDER_EXTERNAL_URL
+
+# ====================================================
+# WEBHOOK SOZLAMALARI
+# ====================================================
+WEBHOOK_PATH = f"/webhook/{config.BOT_TOKEN}"
+WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
+
+@app.on_event("startup")
+async def on_startup():
+    # Botni Telegram bilan bog'lash (Webhook'ni o'rnatish)
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"✅ Webhook o'rnatildi: {WEBHOOK_URL}")
+
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(request: Request):
+    # Telegram'dan kelgan yangi xabarni aiogram'ga uzatish
+    json_data = await request.json()
+    update = types.Update(**json_data)
+    await dp.feed_update(bot, update)
+    return {"status": "ok"}
 
 
 # ====================================================
@@ -322,19 +341,8 @@ async def api_parse_photo(branch: str = Form(...), doc_type: str = Form(...), ph
 
 
 # ====================================================
-# 4. SERVER VA BOTni BIRGALIKDA ISHGA TUSHIRISH
+# 4. SERVERNI ISHGA TUSHIRISH (WEBHOOK REJIMI)
 # ====================================================
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    port = int(os.environ.get("PORT", 10000))
-    config_uvicorn = uvicorn.Config("main:app", host="0.0.0.0", port=port, log_level="info")
-    server = uvicorn.Server(config_uvicorn)
-    
-    await asyncio.gather(
-        server.serve(),
-        dp.start_polling(bot)
-    )
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
