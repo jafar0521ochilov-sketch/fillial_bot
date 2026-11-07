@@ -35,7 +35,6 @@ WEBAPP_URL = RENDER_EXTERNAL_URL
 # 1. AIOGRAM BOT HANDLERLARI (START, MENU VA TUGMALAR)
 # ====================================================
 
-# Asosiy doimiy pastki klaviatura (ReplyKeyboardMarkup)
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📊 Сверка / Недостача"), KeyboardButton(text="📈 Живые остатки (Live)")],
@@ -56,7 +55,6 @@ async def cmd_start(message: types.Message):
         reply_markup=main_kb
     )
 
-# Pastdagi matnli tugmalar uchun handlerlar
 @dp.message(F.text == "📊 Сверка / Недостача")
 async def cmd_sverka(message: types.Message):
     await message.answer("📊 Sverka va nedostacha bo'limi tez orada ishga tushadi yoki Mini App orqali amalga oshiriladi.", reply_markup=main_kb)
@@ -81,7 +79,6 @@ async def cmd_open_webapp(message: types.Message):
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
 
 
-# Telegram botga rasm tashlanganda ishlaydigan xavfsiz va vaqt chegarali handler
 @dp.message(F.photo)
 async def handle_photo_messages(message: types.Message):
     await message.answer("⏳ Rasm qabul qilindi, ma'lumotlar bazaga yuborilmoqda...")
@@ -90,8 +87,6 @@ async def handle_photo_messages(message: types.Message):
         fallback_file = "10.10.26.xlsx"
         if os.path.exists(fallback_file):
             loop = asyncio.get_running_loop()
-            
-            # 15 soniya timeout qo'shamiz, toki bot osilib qolmasin
             try:
                 success = await asyncio.wait_for(
                     loop.run_in_executor(None, db.upload_excel_to_sheet, fallback_file, "Лист1"),
@@ -99,27 +94,23 @@ async def handle_photo_messages(message: types.Message):
                 )
             except asyncio.TimeoutError:
                 success = False
-                print("⚠️ Google Sheets'ga yuborish vaqti tugadi (timeout), lekin jarayon davom etmoqda.")
+                print("⚠️ Google Sheets'ga yuborish vaqti tugadi (timeout).")
             
             if success:
                 await message.answer("✅ Zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
             else:
-                await message.answer("⚠️ Ma'lumotlarni yuborish biroz cho'zildi yoki vaqt chegarasidan oshdi, lekin bazani tekshirib ko'ring.", reply_markup=main_kb)
+                await message.answer("⚠️ Ma'lumotlarni yuborish biroz cho'zildi.", reply_markup=main_kb)
         else:
             await message.answer("❌ Fallback Excel fayli topilmadi.", reply_markup=main_kb)
-            
     except Exception as e:
         print(f"❌ Rasmni qayta ishlashda xatolik: {e}")
-        await message.answer("❌ Xatolik yuz berdi, lekin xavotir olmang.", reply_markup=main_kb)
+        await message.answer("❌ Xatolik yuz berdi.", reply_markup=main_kb)
 
 
-# Har qanday boshqa matnli xabarlarni Gemini AI orqali qayta ishlash (AI Yordamchi)
 @dp.message(F.text)
 async def handle_text_messages(message: types.Message):
-    # Agar maxsus tugmalar bosilgan bo'lsa, ularni o'tkazib yuborish
     if message.text in ["📊 Сверка / Недостача", "📈 Живые остатки (Live)", "🤖 Gemini AI Yordamchi", "🧹 Bazani tozalash", "📱 Mazzali Mini App'ni ochish"]:
         return
-    
     await message.answer("⏳ Gemini AI javob tayyorlamoqda...")
     ai_response = ocr.ask_gemini_agent(message.text, context_data="Mazzali restoran va ombor tizimi.")
     await message.answer(ai_response, reply_markup=main_kb)
@@ -131,7 +122,6 @@ async def handle_text_messages(message: types.Message):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "Mazzali Bot"}
-
 
 @app.get("/")
 async def serve_mini_app(request: Request):
@@ -174,7 +164,6 @@ class SubmitItemsRequest(BaseModel):
     doc_type: str
     items: dict
 
-
 @app.post("/api/submit_items")
 async def api_submit_items(req: SubmitItemsRequest):
     for item_name, qty in req.items.items():
@@ -195,7 +184,6 @@ class SubmitTransferRequest(BaseModel):
     to_branch: str
     items: dict
 
-
 @app.post("/api/submit_transfer")
 async def api_submit_transfer(req: SubmitTransferRequest):
     for item_name, qty in req.items.items():
@@ -213,7 +201,6 @@ async def api_submit_transfer(req: SubmitTransferRequest):
 class SubmitFactoryOrderRequest(BaseModel):
     branch: str
     items: dict
-
 
 @app.post("/api/submit_factory_order")
 async def api_submit_factory_order(req: SubmitFactoryOrderRequest):
@@ -237,10 +224,8 @@ class ShiftCloseRequest(BaseModel):
     factual_items: dict
     current_counters: dict
 
-
 @app.post("/api/close_shift_reconcile")
 async def api_close_shift_reconcile(req: ShiftCloseRequest):
-    """Smena topshirish, snapshot yozish va nedostacha/izlishka hisoblash"""
     try:
         await db.record_shift_snapshot_and_reconcile(
             branch=req.branch,
@@ -251,6 +236,65 @@ async def api_close_shift_reconcile(req: ShiftCloseRequest):
         asyncio.create_task(db.sync_pending_transactions())
         return {"status": "ok"}
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+class SubmitParsedPhotoRequest(BaseModel):
+    branch: str
+    target_branch: str = ""
+    doc_type: str
+    items_json: str
+
+@app.post("/api/submit_photo_parsed")
+async def api_submit_photo_parsed(req: SubmitParsedPhotoRequest):
+    try:
+        items = json.loads(req.items_json)
+        for item in items:
+            item_name = item.get("item_name")
+            qty = item.get("quantity", 0.0)
+            if item_name and qty > 0:
+                await db.add_branch_transaction(
+                    branch=req.branch,
+                    doc_type=req.doc_type,
+                    item_name=item_name,
+                    quantity=qty,
+                    comment="Mini App OCR orqali"
+                )
+        asyncio.create_task(db.sync_pending_transactions())
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"❌ OCR natijalarini saqlashda xatolik: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+class SubmitExtraRequest(BaseModel):
+    branch: str
+    text: str
+
+@app.post("/api/submit_extra")
+async def api_submit_extra(req: SubmitExtraRequest):
+    try:
+        lines = req.text.split("\n")
+        for line in lines:
+            if "-" in line:
+                parts = line.split("-")
+                item_name = parts[0].strip()
+                try:
+                    qty = float(parts[1].strip())
+                except ValueError:
+                    qty = 1.0
+                if item_name:
+                    await db.add_branch_transaction(
+                        branch=req.branch,
+                        doc_type="Дополнительный товар",
+                        item_name=item_name,
+                        quantity=qty,
+                        comment="Qo'shimcha tovar"
+                    )
+        asyncio.create_task(db.sync_pending_transactions())
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"❌ Qo'shimcha tovarlarni saqlashda xatolik: {e}")
         return {"status": "error", "message": str(e)}
 
 

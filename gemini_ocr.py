@@ -22,7 +22,7 @@ ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
 # Foydalaniladigan Gemini modellari ro'yxati
 AVAILABLE_MODELS = [
-    "gemini-3.8-flash",
+    "gemini-1.5-flash",  # To'g'ri ishlaydigan standart model nomi bilan almashtirildi
 ]
 
 
@@ -140,9 +140,8 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
 
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
-    # Rasmni ochib o'lchamini kichiklashtiramiz (tezlikni keskin oshiradi)
     image = Image.open(io.BytesIO(image_bytes))
-    image.thumbnail((1024, 1024))  # Maksimal hajmni cheklash
+    image.thumbnail((1024, 1024))
 
     prompt = (
         "Bu fotoğrafta vardiya sırasında tükenen yemekler gösterilmektedir. "
