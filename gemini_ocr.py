@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-Gemini Vision (OCR) va AI Agent moduli (To'g'rilangan versiya)
+Gemini Vision (OCR) va AI Agent moduli
 """
 
 import io
@@ -15,8 +15,8 @@ import sheets_database
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Barqaror ishlaydigan model
-MODEL_NAME = "gemini-2.5-flash"
+# Google talab qilgan eng so'nggi va ishlaydigan model
+MODEL_NAME = "gemini-3.8-flash"
 
 
 def _clean_json_response(raw_text: str) -> str:
