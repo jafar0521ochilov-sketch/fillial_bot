@@ -347,11 +347,14 @@
       container.innerHTML = '<p class="text-xs font-bold text-slate-600 mb-2">📋 Topilgan taomlar va miqdorlar (zarur bo\'lsa tahrirlang):</p>';
       
       items.forEach((item, index) => {
+        const itemName = item.item_name || item.name || '';
+        const itemQty = item.quantity !== undefined ? item.quantity : '';
+
         container.innerHTML += `
-          <div class="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200" id="item-row-${index}">
-            <input type="text" value="${item.item_name}" id="p-name-${index}" class="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-blue-500">
-            <input type="number" step="any" value="${item.quantity}" id="p-qty-${index}" class="w-20 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
-            <button type="button" onclick="removeItemRow(${index})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 font-bold flex items-center justify-center text-xs">✕</button>
+          <div class="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mb-2" id="item-row-${index}">
+            <input type="text" value="${itemName}" id="p-name-${index}" class="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-blue-500">
+            <input type="number" step="any" value="${itemQty}" id="p-qty-${index}" class="w-20 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
+            <button type="button" onclick="document.getElementById('item-row-${index}').remove()" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 font-bold flex items-center justify-center text-xs">✕</button>
           </div>
         `;
       });
