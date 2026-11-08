@@ -386,14 +386,17 @@
         return;
       }
 
-      const formData = new FormData();
-      formData.append('branch', branch);
-      formData.append('target_branch', targetBranch);
-      formData.append('doc_type', dt);
-      formData.append('items_json', JSON.stringify(items));
-
       try {
-        let res = await fetch('/api/submit_photo_parsed', { method: 'POST', body: formData });
+        let res = await fetch('/api/submit_photo_parsed', { 
+          method: 'POST', 
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            branch: branch,
+            target_branch: targetBranch,
+            doc_type: dt,
+            items_json: JSON.stringify(items)
+          })
+        });
         let result = await res.json();
 
         if (result.status === 'ok') {
