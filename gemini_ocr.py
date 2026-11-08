@@ -17,17 +17,12 @@ import sheets_database
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Ishonchli Gemini modeli
-MODEL_NAME = "gemini-1.5-flash"
+# Yangi va barqaror ishlaydigan Gemini modeli
+MODEL_NAME = "gemini-2.5-flash"
 
 
 def _clean_json_response(raw_text: str) -> str:
     text = raw_text.strip()
-    text = json.loads(text) if text.startswith("{") or text.startswith("[") else text
-    if isinstance(text, (list, dict)):
-        return text
-    # Agar matn bo'lib kelsa, markdown belgilarni tozalaymiz
-    text = str(raw_text).strip()
     text = text.replace("```json", "").replace("```", "").strip()
     return text
 
@@ -51,7 +46,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         prompt = (
             f"{branch_hint}\n"
             "Ushbu rasmda ko'rsatilgan mahsulot nomlari va ularning miqdorlarini aniqlang. "
-            "Javobnifaqat quyidagi formatdagi sof JSON massivi ko'rinishida qaytaring, boshqa hech qandaymatn yozmang:\n"
+            "Javobni faqat quyidagi formatdagi sof JSON massivi ko'rinishida qaytaring, boshqa hech qanday matn yozmang:\n"
             '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
         )
 
@@ -64,8 +59,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             )
         )
 
-        raw_text = response.text.strip()
-        # JSON qismiga ajratib olamiz
+        raw_text = _clean_json_response(response.text)
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
@@ -104,7 +98,7 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
             )
         )
 
-        raw_text = response.text.strip()
+        raw_text = _clean_json_response(response.text)
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
