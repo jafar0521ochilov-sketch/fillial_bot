@@ -37,7 +37,10 @@ WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
 @app.on_event("startup")
 async def on_startup():
-    # Botni Telegram bilan bog'lash (Webhook'ni o'rnatish)
+    # 1. SQLite lokal bazasini ishga tushirish
+    await db.init_db()
+    
+    # 2. Botni Telegram bilan bog'lash (Webhook'ni o'rnatish)
     await bot.set_webhook(WEBHOOK_URL)
     print(f"✅ Webhook o'rnatildi: {WEBHOOK_URL}")
 
