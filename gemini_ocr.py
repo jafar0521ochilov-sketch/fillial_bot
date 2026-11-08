@@ -17,8 +17,8 @@ import sheets_database
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Yangi va barqaror ishlaydigan Gemini modeli
-MODEL_NAME = "gemini-2.5-flash"
+# Google tomonidan tavsiya etilgan eng so'nggi va ishlaydigan model
+MODEL_NAME = "gemini-3.8-flash"
 
 
 def _clean_json_response(raw_text: str) -> str:
