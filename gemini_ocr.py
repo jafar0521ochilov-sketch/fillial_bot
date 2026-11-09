@@ -1,11 +1,12 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-Gemini Vision (OCR) va AI Agent moduli (Avtomatik model fallback bilan)
+Gemini Vision (OCR) va AI Agent moduli (Barqaror qayta urinish mexanizmi bilan)
 """
 
 import io
 import json
 import os
+import time
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -15,14 +16,8 @@ import sheets_database
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Sinab ko'riladigan modellar ro'yxati (agar biri 503 xatosi bersa, avtomatik keyingisiga o'tadi)
-MODELS_TO_TRY = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-pro",
-    "gemini-3.8-flash"
-]
+# Hozirda faqat ishlaydigan va ishonchli model
+MODEL_NAME = "gemini-3.8-flash"
 
 
 def _clean_json_response(raw_text: str) -> str:
@@ -33,24 +28,28 @@ def _clean_json_response(raw_text: str) -> str:
 
 def _generate_with_model_fallback(contents: list):
     """
-    Modellar bo'yicha ketma-ket urinib ko'radi. 503 (High demand) xatosi chiqsa, 
-    keyingi modelga o'tib, so'rovni muvaffaqiyatli bajaradi.
+    Faqat gemini-3.8-flash modelini ishlatadi va 503 (High demand) xatosi chiqsagina 
+    bir necha soniya kutib, qayta urinib ko'radi.
     """
-    last_error = None
-    for model_name in MODELS_TO_TRY:
+    max_retries = 3
+    
+    for attempt in range(max_retries):
         try:
             response = ai_client.models.generate_content(
-                model=model_name,
+                model=MODEL_NAME,
                 contents=contents
             )
             if response and response.text:
                 return response.text
         except Exception as e:
-            last_error = e
-            print(f"⚠️ [{model_name}] modelida xatolik yuz berdi: {e}. Keyingi modelga o'tilmoqda...")
-            continue
+            print(f"⚠️ [{MODEL_NAME}] urinish {attempt + 1} xatolik: {e}")
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # 2 sekund kutib yana urinib ko'ramiz
+                    continue
+            break
             
-    print(f"❌ Barcha modellar ishlamadi. Oxirgi xatolik: {last_error}")
+    print(f"❌ Gemini so'rovi muvaffaqiyatsiz tugadi.")
     return None
 
 
