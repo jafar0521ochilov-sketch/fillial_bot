@@ -1,5 +1,6 @@
 """
 main.py - Mazzali Telegram Mini App & Bot (Webhook Rejimi)
+Lokal Excel birinchi o'ringa qo'yilgan versiya
 """
 
 import asyncio
@@ -37,16 +38,12 @@ WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
 @app.on_event("startup")
 async def on_startup():
-    # 1. SQLite lokal bazasini ishga tushirish
     await db.init_db()
-    
-    # 2. Botni Telegram bilan bog'lash (Webhook'ni o'rnatish)
     await bot.set_webhook(WEBHOOK_URL)
     print(f"✅ Webhook o'rnatildi: {WEBHOOK_URL}")
 
 @app.post(WEBHOOK_PATH)
 async def bot_webhook(request: Request):
-    # Telegram'dan kelgan yangi xabarni aiogram'ga uzatish
     json_data = await request.json()
     update = types.Update(**json_data)
     await dp.feed_update(bot, update)
@@ -155,6 +152,12 @@ async def serve_mini_app(request: Request):
 # ====================================================
 @app.get("/api/dishes")
 async def get_dishes_list():
+    # 1. BIRINCHI NAVBATDA: Lokal Excel faylidan o'qish (1-o'rin)
+    local_dishes = db.get_dishes_from_local_excel()
+    if local_dishes:
+        return local_dishes
+    
+    # 2. ZAXIRA: Agar lokal Excel topilmasa yoki bo'sh bo'lsa, Google Sheets'dan olamiz
     try:
         loop = asyncio.get_running_loop()
         sh = await loop.run_in_executor(None, db.get_spreadsheet)
@@ -178,7 +181,7 @@ async def get_dishes_list():
     except Exception as e:
         print(f"⚠️ Google Sheets'dan taomlarni yuklashda xatolik: {e}")
 
-    return db.get_dishes_from_local_excel()
+    return []
 
 
 class SubmitItemsRequest(BaseModel):
@@ -323,16 +326,25 @@ async def api_submit_extra(req: SubmitExtraRequest):
 @app.post("/api/parse_photo")
 async def api_parse_photo(branch: str = Form(...), doc_type: str = Form(...), photo: UploadFile = File(...)):
     image_bytes = await photo.read()
-    loop = asyncio.get_running_loop()
     valid_menu = []
     
+    # 1. BIRINCHI NAVBATDA: Lokal Excel faylidan valid menyuni olamiz (1-o'rin)
     try:
-        sh = await loop.run_in_executor(None, db.get_spreadsheet)
-        shota_sheet = await loop.run_in_executor(None, sh.worksheet, "Заказ_Шота")
-        rows = await loop.run_in_executor(None, shota_sheet.get_all_values)
-        valid_menu = [r[1].strip() for r in rows[1:] if len(r) >= 2 and r[1].strip()]
+        local_dishes = db.get_dishes_from_local_excel()
+        valid_menu = [d["name"] for d in local_dishes if d.get("name")]
     except Exception as e:
-        print(f"⚠️ Menyu ro'yxatini yuklashda xatolik: {e}")
+        print(f"⚠️ Lokal Excel'dan menyu olishda xatolik: {e}")
+
+    # 2. ZAXIRA: Agar lokal Excel bo'sh bo'lsa, Google Sheets'dan olib ko'ramiz
+    if not valid_menu:
+        try:
+            loop = asyncio.get_running_loop()
+            sh = await loop.run_in_executor(None, db.get_spreadsheet)
+            shota_sheet = await loop.run_in_executor(None, sh.worksheet, "Заказ_Шота")
+            rows = await loop.run_in_executor(None, shota_sheet.get_all_values)
+            valid_menu = [r[1].strip() for r in rows[1:] if len(r) >= 2 and r[1].strip()]
+        except Exception as e:
+            print(f"⚠️ Google Sheets'dan menyu yuklashda xatolik: {e}")
 
     if doc_type == "Закончившиеся блюда" or doc_type == "FINISHED_DISHES":
         finished_list = ocr.parse_finished_dishes_photo(image_bytes, valid_menu_items=valid_menu)

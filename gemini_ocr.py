@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-Gemini Vision (OCR) va AI Agent moduli
+Gemini Vision (OCR) va AI Agent moduli (Lokal Excel menyusi bilan ishlashga moslashtirilgan)
 """
 
 import io
@@ -27,15 +27,26 @@ def _clean_json_response(raw_text: str) -> str:
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki chekni Gemini orqali o'qib, mahsulotlar va miqdorlarni qaytaradi.
+    Rasm yoki chekni Gemini orqali o'qib, lokal Excel menyusiga tayangan holda mahsulotlar va miqdorlarni qaytaradi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
 
         branch_hint = f"'{branch_name}' filialiga oid ma'lumotlarni o'qing." if branch_name else ""
+        
+        # Lokal Excel'dan kelgan menyu elementlarini Gemini promptiga qo'shamiz
+        menu_hint = ""
+        if valid_menu_items:
+            menu_str = ", ".join([f'"{item}"' for item in valid_menu_items])
+            menu_hint = (
+                f"\nDiqqat! Mahsulot nomlarini aniqlashda FAQAT quyidagi tasdiqlangan menyu ro'yxatidan foydalaning. "
+                f"Rasmdagi yozuvlarni ushbu ro'yxatdagi eng o'xshash nomlarga moslang:\n[{menu_str}]\n"
+            )
+
         prompt = (
             f"{branch_hint}\n"
+            f"{menu_hint}\n"
             "Ushbu rasmda ko'rsatilgan mahsulot nomlari va ularning miqdorlarini aniqlang. "
             "Javobni faqat quyidagi formatdagi sof JSON massivi ko'rinishida qaytaring, boshqa hech qanday matn yozmang:\n"
             '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
@@ -60,13 +71,22 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
 
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
+    """
+    Tugagan taomlar rasmini lokal Excel menyusi asosida o'qiydi.
+    """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
 
+        menu_hint = ""
+        if valid_menu_items:
+            menu_str = ", ".join([f'"{item}"' for item in valid_menu_items])
+            menu_hint = f"\nMavjud taomlar ro'yxati:\n[{menu_str}]\n"
+
         prompt = (
+            f"{menu_hint}\n"
             "Bu fotosuratda smena davomida tugagan taomlar ko'rsatilgan. "
-            "Barcha taom nomlarini aniqlang va faqat sof JSON massivi ko'rinishida qaytaring:\n"
+            "Yuqoridagi ro'yxatga tayanib, barcha tugagan taom nomlarini aniqlang va faqat sof JSON massivi ko'rinishida qaytaring:\n"
             '["Taom 1", "Taom 2"]'
         )
         

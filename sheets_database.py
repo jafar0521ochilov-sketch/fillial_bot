@@ -1,7 +1,6 @@
 """
 sheets_database.py - Mazzali Inventory, Sverka & Order Management System
-Обновлённый модуль: SQLite локальная база данных, изоляция филиалов, 
-12-часовая логика смен (Snapshot/Delta), сверка недостач/излишков и синхронизация с Google Sheets.
+Yangilangan modul: Local Excel fallback funksiyasi qo'shildi.
 """
 
 import asyncio
@@ -46,10 +45,6 @@ def get_spreadsheet():
 
 
 def get_current_shift_info(dt: datetime = None) -> tuple:
-    """
-    Текущая смена и дата смены (День: 08:00-20:00, Ночь: 20:00-08:00).
-    Возвращает (shift_date_str, shift_type: 'DAY'|'NIGHT')
-    """
     if dt is None:
         dt = datetime.now()
     
@@ -62,7 +57,6 @@ def get_current_shift_info(dt: datetime = None) -> tuple:
         shift_date = dt.strftime("%d.%m.%Y")
     else:
         shift_type = "NIGHT"
-        # Если время от 00:00 до 07:59, смена относится к предыдущему дню
         if current_time < morning_start:
             shift_date = (dt - timedelta(days=1)).strftime("%d.%m.%Y")
         else:
@@ -73,7 +67,6 @@ def get_current_shift_info(dt: datetime = None) -> tuple:
 
 async def init_db():
     async with aiosqlite.connect(config.DB_PATH) as db:
-        # 1. Таблица изолированных транзакций по филиалам
         await db.execute("""
             CREATE TABLE IF NOT EXISTS branch_transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +87,6 @@ async def init_db():
             )
         """)
 
-        # 2. Таблица 12-часовых снимков (Snapshots) расхода для расчета Delta
         await db.execute("""
             CREATE TABLE IF NOT EXISTS shift_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +102,6 @@ async def init_db():
             )
         """)
 
-        # 3. Таблица результатов сверки (Nedostacha / Izlishka)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS shift_reconciliations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +123,6 @@ async def init_db():
             )
         """)
 
-        # 4. Вспомогательная таблица стоп-листов
         await db.execute("""
             CREATE TABLE IF NOT EXISTS finished_dishes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,7 +155,6 @@ async def add_branch_transaction(branch: str, doc_type: str, item_name: str, qua
 
 
 async def add_transfer_transaction(from_branch: str, to_branch: str, item_name: str, quantity: float, cashier: str = ""):
-    """Трансфер между филиалами"""
     comment_out = f"Transfer Out -> {to_branch}"
     await add_branch_transaction(
         branch=from_branch,
@@ -188,12 +177,6 @@ async def add_transfer_transaction(from_branch: str, to_branch: str, item_name: 
 
 
 async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_factual: dict, current_counters: dict):
-    """
-    Закрытие/сдача смены:
-    1. Фиксация 12-часового показателя авто-расхода (Snapshot).
-    2. Расчёт расходной дельты (Rash_end - Rash_start).
-    3. Сверка расчётного и фактического остатков (Nedostacha / Izlishka).
-    """
     now = datetime.now()
     cur_date = now.strftime("%d.%m.%Y")
     cur_time = now.strftime("%H:%M:%S")
@@ -203,13 +186,11 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
         db.row_factory = aiosqlite.Row
 
         for item_name, counter_val in current_counters.items():
-            # Запись текущего счётчика расхода
             await db.execute("""
                 INSERT INTO shift_snapshots (date, time, shift_date, shift_type, branch, item_name, total_counter_val, cashier)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (cur_date, cur_time, shift_date, shift_type, branch, item_name, counter_val, cashier))
 
-            # Поиск предыдущего счётчика
             cursor = await db.execute("""
                 SELECT total_counter_val FROM shift_snapshots
                 WHERE branch = ? AND item_name = ?
@@ -220,7 +201,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             prev_counter_val = prev_row["total_counter_val"] if prev_row else counter_val
             shift_consumption = max(0.0, counter_val - prev_counter_val)
 
-            # Получение остатка на начало смены
             cursor_start = await db.execute("""
                 SELECT quantity FROM branch_transactions
                 WHERE branch = ? AND item_name = ? AND doc_type IN ('Утренний остаток', 'Вечерний остаток')
@@ -229,7 +209,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             start_row = await cursor_start.fetchone()
             start_stock = start_row["quantity"] if start_row else 0.0
 
-            # Приход за смену
             cursor_in = await db.execute("""
                 SELECT SUM(quantity) as total FROM branch_transactions
                 WHERE branch = ? AND item_name = ? AND shift_date = ? AND shift_type = ? AND doc_type = 'Приход'
@@ -237,7 +216,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             in_row = await cursor_in.fetchone()
             prikxod = in_row["total"] or 0.0
 
-            # Transfer In
             cursor_tin = await db.execute("""
                 SELECT SUM(quantity) as total FROM branch_transactions
                 WHERE branch = ? AND item_name = ? AND shift_date = ? AND shift_type = ? AND doc_type = 'Перемещение (Поступление)'
@@ -245,7 +223,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             tin_row = await cursor_tin.fetchone()
             transfer_in = tin_row["total"] or 0.0
 
-            # Transfer Out
             cursor_tout = await db.execute("""
                 SELECT SUM(quantity) as total FROM branch_transactions
                 WHERE branch = ? AND item_name = ? AND shift_date = ? AND shift_type = ? AND doc_type = 'Перемещение (Выбытие)'
@@ -253,7 +230,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             tout_row = await cursor_tout.fetchone()
             transfer_out = tout_row["total"] or 0.0
 
-            # Формула расчётного остатка
             calculated_stock = start_stock + prikxod + transfer_in - shift_consumption - transfer_out
             factual_stock = items_factual.get(item_name, 0.0)
             difference = factual_stock - calculated_stock
@@ -265,7 +241,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             else:
                 status = "OK"
 
-            # Сохранение результатов сверки
             await db.execute("""
                 INSERT INTO shift_reconciliations 
                 (shift_date, shift_type, branch, item_name, start_stock, prikxod, transfer_in, transfer_out, 
@@ -274,7 +249,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
             """, (shift_date, shift_type, branch, item_name, start_stock, prikxod, transfer_in, transfer_out,
                   shift_consumption, calculated_stock, factual_stock, difference, status, cashier))
 
-            # Запись текущего фактического остатка как начального остатка для следующей смены
             doc_type_stock = "Вечерний остаток" if shift_type == "DAY" else "Утренний остаток"
             await db.execute("""
                 INSERT INTO branch_transactions 
@@ -286,7 +260,6 @@ async def record_shift_snapshot_and_reconcile(branch: str, cashier: str, items_f
 
 
 async def save_factory_orders_to_sheet(branch: str, orders: dict):
-    """Отправка заказа филиала в индивидуальный лист Заказ_<Filial> в Google Sheets"""
     target_sheet = f"Заказ_{branch}"
     
     loop = asyncio.get_running_loop()
@@ -321,7 +294,6 @@ async def save_factory_orders_to_sheet(branch: str, orders: dict):
 
 
 async def sync_pending_transactions():
-    """Синхронизация несохранённых транзакций филиалов с Google Sheets"""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
@@ -392,9 +364,6 @@ async def purge_old_records():
 
 
 async def upload_excel_to_sheet(file_path: str, sheet_name: str = "Лист1"):
-    """
-    Excel faylini (.xlsx) Gemini'siz to'g'ridan-to'g'ri Google Sheets'ning ko'rsatilgan varaqasiga yuklaydi.
-    """
     try:
         df = pd.read_excel(file_path, sheet_name=sheet_name)
         df = df.fillna("")
@@ -420,3 +389,33 @@ async def upload_excel_to_sheet(file_path: str, sheet_name: str = "Лист1"):
     except Exception as e:
         print(f"❌ Excel faylni Google Sheets'ga yuklashda xatolik: {e}")
         return False
+
+
+def get_dishes_from_local_excel(file_path: str = "10.10.26.xlsx") -> list[dict]:
+    """
+    Zaxiradagi local Excel faylidan mahsulotlar ro'yxatini o'qib qaytaradi.
+    """
+    try:
+        if not os.path.exists(file_path):
+            return []
+        
+        df = pd.read_excel(file_path, sheet_name="Лист1")
+        dishes = []
+        for idx, row in df.iterrows():
+            if idx < 3:  # Sarlavha qatorlarini o'tkazib yuborish
+                continue
+            if len(row) > 2:
+                item_no = str(row.iloc[1]) if pd.notna(row.iloc[1]) else ""
+                name = str(row.iloc[2]) if pd.notna(row.iloc[2]) else ""
+                barcode = str(row.iloc[3]) if pd.notna(row.iloc[3]) else ""
+                
+                if name and name.strip() and name.strip() != "nan":
+                    dishes.append({
+                        "no": item_no.strip(),
+                        "name": name.strip(),
+                        "barcode": barcode.strip() if barcode != "nan" else ""
+                    })
+        return dishes
+    except Exception as e:
+        print(f"❌ Local Excel faylini o'qishda xatolik: {e}")
+        return []
