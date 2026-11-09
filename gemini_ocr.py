@@ -1,6 +1,6 @@
 """
 gemini_ocr.py - Mazzali Inventory & Order Management Bot
-Gemini Vision (OCR) va AI Agent moduli (Lokal Excel menyusi bilan ishlashga moslashtirilgan)
+Gemini Vision (OCR) va AI Agent moduli (Avtomatik model fallback bilan)
 """
 
 import io
@@ -15,8 +15,14 @@ import sheets_database
 
 ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# Google talab qilgan eng so'nggi va ishlaydigan model
-MODEL_NAME = "gemini-3.8-flash"
+# Sinab ko'riladigan modellar ro'yxati (agar biri 503 xatosi bersa, avtomatik keyingisiga o'tadi)
+MODELS_TO_TRY = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-3.8-flash"
+]
 
 
 def _clean_json_response(raw_text: str) -> str:
@@ -25,9 +31,32 @@ def _clean_json_response(raw_text: str) -> str:
     return text
 
 
+def _generate_with_model_fallback(contents: list):
+    """
+    Modellar bo'yicha ketma-ket urinib ko'radi. 503 (High demand) xatosi chiqsa, 
+    keyingi modelga o'tib, so'rovni muvaffaqiyatli bajaradi.
+    """
+    last_error = None
+    for model_name in MODELS_TO_TRY:
+        try:
+            response = ai_client.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            last_error = e
+            print(f"⚠️ [{model_name}] modelida xatolik yuz berdi: {e}. Keyingi modelga o'tilmoqda...")
+            continue
+            
+    print(f"❌ Barcha modellar ishlamadi. Oxirgi xatolik: {last_error}")
+    return None
+
+
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki chekni Gemini orqali o'qib, lokal Excel menyusiga tayangan holda mahsulotlar va miqdorlarni qaytaradi.
+    Rasm yoki chekni Gemini orqali o'qib, mahsulotlar va miqdorlarni qaytaradi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -35,7 +64,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
         branch_hint = f"'{branch_name}' filialiga oid ma'lumotlarni o'qing." if branch_name else ""
         
-        # Lokal Excel'dan kelgan menyu elementlarini Gemini promptiga qo'shamiz
         menu_hint = ""
         if valid_menu_items:
             menu_str = ", ".join([f'"{item}"' for item in valid_menu_items])
@@ -52,12 +80,11 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
         )
 
-        response = ai_client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[image, prompt]
-        )
+        raw_text_response = _generate_with_model_fallback([image, prompt])
+        if not raw_text_response:
+            return []
 
-        raw_text = _clean_json_response(response.text)
+        raw_text = _clean_json_response(raw_text_response)
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
@@ -71,9 +98,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
 
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
-    """
-    Tugagan taomlar rasmini lokal Excel menyusi asosida o'qiydi.
-    """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
@@ -90,12 +114,11 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
             '["Taom 1", "Taom 2"]'
         )
         
-        response = ai_client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[image, prompt]
-        )
+        raw_text_response = _generate_with_model_fallback([image, prompt])
+        if not raw_text_response:
+            return []
 
-        raw_text = _clean_json_response(response.text)
+        raw_text = _clean_json_response(raw_text_response)
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
@@ -111,11 +134,8 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
 def ask_gemini_agent(user_query: str, context_data: str = "") -> str:
     try:
         full_prompt = f"Kontekst ma'lumotlari:\n{context_data}\n\nFoydalanuvchi savoli: {user_query}"
-        response = ai_client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[full_prompt]
-        )
-        return response.text
+        response_text = _generate_with_model_fallback([full_prompt])
+        return response_text if response_text else "⚠️ AI yordamchi bilan bog'lanishda xatolik yuz berdi."
     except Exception as e:
         print(f"❌ Gemini AI javob berishda xatolik: {e}")
         return "⚠️ AI yordamchi bilan bog'lanishda xatolik yuz berdi."
