@@ -28,7 +28,8 @@ bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
-WEBAPP_URL = RENDER_EXTERNAL_URL
+# Kesh muammosini hal qilish uchun ?v=4 qo'shildi
+WEBAPP_URL = f"{RENDER_EXTERNAL_URL}/?v=4"
 
 # ====================================================
 # WEBHOOK SOZLAMALARI
@@ -152,12 +153,10 @@ async def serve_mini_app(request: Request):
 # ====================================================
 @app.get("/api/dishes")
 async def get_dishes_list():
-    # 1. BIRINCHI NAVBATDA: Lokal Excel faylidan o'qish (1-o'rin)
     local_dishes = db.get_dishes_from_local_excel()
     if local_dishes:
         return local_dishes
     
-    # 2. ZAXIRA: Agar lokal Excel topilmasa yoki bo'sh bo'lsa, Google Sheets'dan olamiz
     try:
         loop = asyncio.get_running_loop()
         sh = await loop.run_in_executor(None, db.get_spreadsheet)
@@ -328,14 +327,12 @@ async def api_parse_photo(branch: str = Form(...), doc_type: str = Form(...), ph
     image_bytes = await photo.read()
     valid_menu = []
     
-    # 1. BIRINCHI NAVBATDA: Lokal Excel faylidan valid menyuni olamiz (1-o'rin)
     try:
         local_dishes = db.get_dishes_from_local_excel()
         valid_menu = [d["name"] for d in local_dishes if d.get("name")]
     except Exception as e:
         print(f"⚠️ Lokal Excel'dan menyu olishda xatolik: {e}")
 
-    # 2. ZAXIRA: Agar lokal Excel bo'sh bo'lsa, Google Sheets'dan olib ko'ramiz
     if not valid_menu:
         try:
             loop = asyncio.get_running_loop()
