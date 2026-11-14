@@ -344,14 +344,13 @@
 
     function renderParsedItems(items) {
       const container = document.getElementById('parsedItemsContainer');
-      container.innerHTML = '<p class="text-xs font-bold text-slate-600 mb-2">📋 Topilgan taomlar va miqdorlar (zarur bo\'lsa tahrirlang):</p>';
+      let html = '<p class="text-xs font-bold text-slate-600 mb-2">📋 Topilgan taomlar va miqdorlar (zarur bo\'lsa tahrirlang):</p>';
       
       items.forEach((item, index) => {
-        // Har qanday ehtimoliy kalit nomlarini to'g'ri o'qish uchun yaxshilandi
         const itemName = item.item_name || item.name || item.title || '';
         const itemQty = item.quantity !== undefined ? item.quantity : (item.qty !== undefined ? item.qty : '');
 
-        container.innerHTML += `
+        html += `
           <div class="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mb-2" id="item-row-${index}">
             <input type="text" value="${itemName}" id="p-name-${index}" class="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-blue-500">
             <input type="number" step="any" value="${itemQty}" id="p-qty-${index}" class="w-20 bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none focus:border-blue-500">
@@ -360,11 +359,13 @@
         `;
       });
       
-      container.innerHTML += `
+      html += `
         <button type="button" onclick="submitParsedData(${items.length})" class="w-full mt-4 py-3.5 bg-emerald-600 active:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md">
           ✅ Tasdiqlash va Google Sheets'ga yuborish
         </button>
       `;
+
+      container.innerHTML = html;
     }
 
     async function submitParsedData(totalCount) {
@@ -416,7 +417,7 @@
     }
 
     async function submitExtraData() {
-      const branch = document.getElementById('branchSelect').value;
+      const branch = document.getElementById('branchSelect'].value;
       const text = document.getElementById('extraGoodsText').value;
       if (!text.trim()) {
         alert("Ma'lumot kiriting!");
