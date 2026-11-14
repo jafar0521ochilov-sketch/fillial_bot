@@ -1,5 +1,5 @@
 """
-gemini_ocr.py -> OpenAI GPT-4o-mini OCR & AI Agent moduli
+gemini_ocr.py -> OpenAI GPT-4o-mini OCR & AI Agent moduli (Kuchaytirilgan versiya)
 """
 import base64
 import io
@@ -25,13 +25,13 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         image.save(buffered, format="JPEG")
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        branch_hint = f"'{branch_name}' filialiga oid ma'lumotlarni o'qing." if branch_name else ""
+        branch_hint = f"'{branch_name}' filialiga oid nakladnoy yoki qoldiq rasmi." if branch_name else ""
 
         prompt = (
             f"{branch_hint}\n"
-            "Ushbu rasmda ko'rsatilgan taomlar yoki mahsulotlar nomlari va ularning miqdorlarini aniqlang. "
-            "Javobni FAQAT va FAQAT quyidagi formatdagi sof JSON massivi shaklida qaytaring, boshqa hech qanday izoh yozmang:\n"
-            '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
+            "Ushbu rasmda yozilgan barcha tovarlar, taomlar nomlari va ularning miqdorlarini (sonini) aniqlang.\n"
+            "Javobni FAQAT quyidagi JSON massivi formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
+            '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
 
         response = client.chat.completions.create(
@@ -50,15 +50,15 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=1500
+            max_tokens=2000
         )
 
         raw_text = response.choices[0].message.content.strip()
         print(f"🤖 OpenAI OCR xom javobi: {raw_text}")
         
-        # 1-usul: To'g'ridan-to'g'ri tozalab o'qish
+        # 1. Tozalab o'qishga urinish
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         try:
-            clean_text = raw_text.replace("```json", "").replace("```", "").strip()
             data = json.loads(clean_text)
             if isinstance(data, list):
                 return data
@@ -69,13 +69,32 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         except:
             pass
 
-        # 2-usul (Zaxira): Matn ichidan '[' va ']' orasidagi JSON massivini qidirib topish
+        # 2. Zaxira: Regex orqali barcha {} bloklarini topib yig'ib olish
+        items = []
+        # JSON obyektlarini topish uchun regex
+        matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
+        for name, qty in matches:
+            try:
+                items.append({"item_name": name.strip(), "quantity": float(qty)})
+            except:
+                pass
+        
+        if items:
+            return items
+
+        # 3. Umumiyroq massivni qidirish
         match = re.search(r'\[\s*\{.*?\}\s*\]', raw_text, re.DOTALL)
         if match:
             array_str = match.group(0)
-            items = json.loads(array_str)
-            if isinstance(items, list):
-                return items
+            parsed_items = json.loads(array_str)
+            if isinstance(parsed_items, list):
+                cleaned_items = []
+                for it in parsed_items:
+                    name = it.get("item_name") or it.get("name") or it.get("title")
+                    qty = it.get("quantity") if it.get("quantity") is not None else it.get("qty", 1.0)
+                    if name:
+                        cleaned_items.append({"item_name": str(name).strip(), "quantity": float(qty or 1.0)})
+                return cleaned_items
 
     except Exception as e:
         print(f"❌ OpenAI OCR xatolik: {e}")
@@ -114,21 +133,19 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=500
+            max_tokens=800
         )
 
         raw_text = response.choices[0].message.content.strip()
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         data = json.loads(clean_text)
-
         if isinstance(data, list):
-            return data
+            return [str(x) for x in data]
         elif isinstance(data, dict):
             for val in data.values():
                 if isinstance(val, list):
-                    return val
-
+                    return [str(x) for x in val]
     except Exception as e:
         print(f"❌ OpenAI tugagan taomlarni o'qishda xatolik: {e}")
 
