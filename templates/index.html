@@ -148,10 +148,10 @@
     <div class="text-center">
       <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2 text-2xl">📸</div>
       <h3 id="photoTitle" class="font-bold text-sm text-slate-800">Hujjat yoki hujjat daftari rasmini yuboring</h3>
-      <p class="text-xs text-slate-400">Gemini AI avtomatik o'qib beradi va tahrirlash imkonini beradi</p>
+      <p class="text-xs text-slate-400">OpenAI GPT-4o-mini avtomatik o'qib beradi va tahrirlash imkonini beradi</p>
     </div>
     
-   <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="uploadAndParsePhoto(event)">
+    <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="uploadAndParsePhoto(event)">
     <label for="photoInput" 
            class="w-full py-4 bg-blue-600 active:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer">
       <span>📷</span>
@@ -159,7 +159,7 @@
     </label>
     
     <div id="parsingLoader" class="hidden text-center py-6 text-xs text-blue-600 font-bold animate-pulse">
-      🤖 Gemini AI hujjatni tahlil qilmoqda, iltimos kuting...
+      🤖 OpenAI AI hujjatni tahlil qilmoqda, iltimos kuting...
     </div>
 
     <div id="parsedItemsContainer" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
@@ -288,7 +288,7 @@
           const qty = parseFloat(input.value);
           if (!isNaN(qty)) {
             factual_items[d.name] = qty;
-            current_counters[d.name] = qty; // Snapshot uchun
+            current_counters[d.name] = qty;
           }
         }
       });
@@ -347,8 +347,9 @@
       container.innerHTML = '<p class="text-xs font-bold text-slate-600 mb-2">📋 Topilgan taomlar va miqdorlar (zarur bo\'lsa tahrirlang):</p>';
       
       items.forEach((item, index) => {
-        const itemName = item.item_name || item.name || '';
-        const itemQty = item.quantity !== undefined ? item.quantity : '';
+        // Har qanday ehtimoliy kalit nomlarini to'g'ri o'qish uchun yaxshilandi
+        const itemName = item.item_name || item.name || item.title || '';
+        const itemQty = item.quantity !== undefined ? item.quantity : (item.qty !== undefined ? item.qty : '');
 
         container.innerHTML += `
           <div class="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mb-2" id="item-row-${index}">
