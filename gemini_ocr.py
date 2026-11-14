@@ -39,8 +39,8 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             f"{branch_hint}\n"
             f"{menu_hint}\n"
             "Ushbu rasmda ko'rsatilgan mahsulot nomlari va ularning miqdorlarini aniqlang. "
-            "Javobni faqat quyidagi formatdagi sof JSON massivi ko'rinishida qaytaring, boshqa hech qanday matn yozmang:\n"
-            '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
+            "Javobni FAQAT quyidagi formatdagi JSON obyekt ko'rinishida qaytaring, boshqa hech qanday izoh yozmang:\n"
+            '{"items": [{"item_name": "Mahsulot Nomi", "quantity": 1.0}]}'
         )
 
         response = client.chat.completions.create(
@@ -59,18 +59,21 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=1000
+            max_tokens=1000,
+            response_format={"type": "json_object"}
         )
 
         raw_text = response.choices[0].message.content.strip()
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw_text)
 
-        if "[" in raw_text and "]" in raw_text:
-            start = raw_text.find("[")
-            end = raw_text.rfind("]") + 1
-            items = json.loads(raw_text[start:end])
-            if isinstance(items, list):
-                return items
+        # JSON ichidan ro'yxatni qidirib topamiz
+        if isinstance(data, dict):
+            for key in data:
+                if isinstance(data[key], list):
+                    return data[key]
+        elif isinstance(data, list):
+            return data
+
     except Exception as e:
         print(f"❌ OpenAI OCR xatolik: {e}")
 
@@ -94,8 +97,8 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
         prompt = (
             f"{menu_hint}\n"
             "Bu fotosuratda smena davomida tugagan taomlar ko'rsatilgan. "
-            "Yuqoridagi ro'yxatga tayanib, barcha tugagan taom nomlarini aniqlang va faqat sof JSON massivi ko'rinishida qaytaring:\n"
-            '["Taom 1", "Taom 2"]'
+            "Yuqoridagi ro'yxatga tayanib, barcha tugagan taom nomlarini aniqlang va FAQAT quyidagi JSON formatida qaytaring:\n"
+            '{"dishes": ["Taom 1", "Taom 2"]}'
         )
         
         response = client.chat.completions.create(
@@ -114,18 +117,20 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=500
+            max_tokens=500,
+            response_format={"type": "json_object"}
         )
 
         raw_text = response.choices[0].message.content.strip()
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw_text)
 
-        if "[" in raw_text and "]" in raw_text:
-            start = raw_text.find("[")
-            end = raw_text.rfind("]") + 1
-            dish_names = json.loads(raw_text[start:end])
-            if isinstance(dish_names, list):
-                return dish_names
+        if isinstance(data, dict):
+            for key in data:
+                if isinstance(data[key], list):
+                    return data[key]
+        elif isinstance(data, list):
+            return data
+
     except Exception as e:
         print(f"❌ OpenAI tugagan taomlarni o'qishda xatolik: {e}")
 
