@@ -29,10 +29,13 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
         prompt = (
             f"{branch_hint}\n"
-            "Ushbu rasmda yozilgan barcha tovarlar, taomlar nomlari va ularning miqdorlarini (sonini) aniqlang.\n"
+            "Ushbu nakladnoy yoki qoldiq rasmidagi barcha tovar va taomlarning HAQIQIY NOMLARINI (masalan: 'Grechka s kapustoy', 'Kuritsa po-meksikanski' va hokazo) hamda ularning miqdorlarini aniqlang.\n"
+            "DIQQAT: Aslo 'Tovar 1', 'Tovar 2' kabi umumiy yoki taxminiy so'zlardan foydalanmang! Faqat qog'ozda yozilgan aniq nomlarni yozing.\n"
             "Javobni FAQAT quyidagi JSON massivi formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
+        
+        
 
         response = client.chat.completions.create(
             model=MODEL_NAME,
