@@ -29,7 +29,7 @@ dp = Dispatcher()
 
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
 # Kesh muammosini hal qilish uchun ?v=4 qo'shildi
-WEBAPP_URL = f"{RENDER_EXTERNAL_URL}/?v=4"
+WEBAPP_URL = f"{RENDER_EXTERNAL_URL}/?v=5"
 
 # ====================================================
 # WEBHOOK SOZLAMALARI
