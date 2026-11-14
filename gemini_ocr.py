@@ -39,8 +39,8 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             f"{branch_hint}\n"
             f"{menu_hint}\n"
             "Ushbu rasmda ko'rsatilgan mahsulot nomlari va ularning miqdorlarini aniqlang. "
-            "Javobni FAQAT quyidagi formatdagi JSON obyekt ko'rinishida qaytaring, boshqa hech qanday izoh yozmang:\n"
-            '{"items": [{"item_name": "Mahsulot Nomi", "quantity": 1.0}]}'
+            "Javobni FAQAT quyidagi formatdagi JSON massivi ko'rinishida qaytaring, boshqa hech qanday izoh yozmang:\n"
+            '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
         )
 
         response = client.chat.completions.create(
@@ -59,20 +59,29 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=1000,
-            response_format={"type": "json_object"}
+            max_tokens=1000
         )
 
         raw_text = response.choices[0].message.content.strip()
-        data = json.loads(raw_text)
+        print(f"🤖 OpenAI OCR xom javobi: {raw_text}")
+        
+        # Markdown belgilarini tozalash
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(clean_text)
 
-        # JSON ichidan ro'yxatni qidirib topamiz
-        if isinstance(data, dict):
-            for key in data:
-                if isinstance(data[key], list):
-                    return data[key]
-        elif isinstance(data, list):
+        # Har qanday formatni (massiv yoki obyekt ichidagi ro'yxatni) avtomatik topish
+        if isinstance(data, list):
             return data
+        elif isinstance(data, dict):
+            # Avval "items" yoki "products" kalitlarini qidiramiz
+            for k in ["items", "products", "result", "data", "list"]:
+                if k in data and isinstance(data[k], list):
+                    return data[k]
+            # Agar boshqa kalit nomi bilan kelgan bo'lsa, birinchi uchragan listni olamiz
+            for val in data.values():
+                if isinstance(val, list):
+                    return val
 
     except Exception as e:
         print(f"❌ OpenAI OCR xatolik: {e}")
@@ -97,8 +106,8 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
         prompt = (
             f"{menu_hint}\n"
             "Bu fotosuratda smena davomida tugagan taomlar ko'rsatilgan. "
-            "Yuqoridagi ro'yxatga tayanib, barcha tugagan taom nomlarini aniqlang va FAQAT quyidagi JSON formatida qaytaring:\n"
-            '{"dishes": ["Taom 1", "Taom 2"]}'
+            "Yuqoridagi ro'yxatga tayanib, barcha tugagan taom nomlarini aniqlang va FAQAT sof JSON massivi ko'rinishida qaytaring:\n"
+            '["Taom 1", "Taom 2"]'
         )
         
         response = client.chat.completions.create(
@@ -117,19 +126,23 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=500,
-            response_format={"type": "json_object"}
+            max_tokens=500
         )
 
         raw_text = response.choices[0].message.content.strip()
-        data = json.loads(raw_text)
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(clean_text)
 
-        if isinstance(data, dict):
-            for key in data:
-                if isinstance(data[key], list):
-                    return data[key]
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return data
+        elif isinstance(data, dict):
+            for k in ["dishes", "items", "result", "list"]:
+                if k in data and isinstance(data[k], list):
+                    return data[k]
+            for val in data.values():
+                if isinstance(val, list):
+                    return val
 
     except Exception as e:
         print(f"❌ OpenAI tugagan taomlarni o'qishda xatolik: {e}")
