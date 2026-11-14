@@ -1,65 +1,29 @@
 """
-gemini_ocr.py - Mazzali Inventory & Order Management Bot
-Gemini Vision (OCR) va AI Agent moduli (Barqaror qayta urinish mexanizmi bilan)
+gemini_ocr.py -> OpenAI GPT-4o-mini OCR & AI Agent moduli
 """
-
+import base64
 import io
 import json
-import os
-import time
 from PIL import Image
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 import config
-import sheets_database
 
-ai_client = genai.Client(api_key=config.GEMINI_API_KEY)
-
-# Hozirda faqat ishlaydigan va ishonchli model
-MODEL_NAME = "gemini-3.8-flash"
-
-
-def _clean_json_response(raw_text: str) -> str:
-    text = raw_text.strip()
-    text = text.replace("```json", "").replace("```", "").strip()
-    return text
-
-
-def _generate_with_model_fallback(contents: list):
-    """
-    Faqat gemini-3.8-flash modelini ishlatadi va 503 (High demand) xatosi chiqsagina 
-    bir necha soniya kutib, qayta urinib ko'radi.
-    """
-    max_retries = 3
-    
-    for attempt in range(max_retries):
-        try:
-            response = ai_client.models.generate_content(
-                model=MODEL_NAME,
-                contents=contents
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            print(f"⚠️ [{MODEL_NAME}] urinish {attempt + 1} xatolik: {e}")
-            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                if attempt < max_retries - 1:
-                    time.sleep(2)  # 2 sekund kutib yana urinib ko'ramiz
-                    continue
-            break
-            
-    print(f"❌ Gemini so'rovi muvaffaqiyatsiz tugadi.")
-    return None
+client = OpenAI(api_key=config.OPENAI_API_KEY)
+MODEL_NAME = "gpt-4o-mini"
 
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki chekni Gemini orqali o'qib, mahsulotlar va miqdorlarni qaytaradi.
+    Rasm yoki chekni OpenAI GPT-4o-mini orqali o'qib, mahsulotlar va miqdorlarni qaytaradi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
+        
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid ma'lumotlarni o'qing." if branch_name else ""
         
@@ -79,11 +43,28 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             '[{"item_name": "Mahsulot Nomi", "quantity": 1.0}]'
         )
 
-        raw_text_response = _generate_with_model_fallback([image, prompt])
-        if not raw_text_response:
-            return []
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000
+        )
 
-        raw_text = _clean_json_response(raw_text_response)
+        raw_text = response.choices[0].message.content.strip()
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
@@ -91,7 +72,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             if isinstance(items, list):
                 return items
     except Exception as e:
-        print(f"❌ Gemini OCR tahlil qilishda xatolik: {e}")
+        print(f"❌ OpenAI OCR xatolik: {e}")
 
     return []
 
@@ -100,6 +81,10 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
+        
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         menu_hint = ""
         if valid_menu_items:
@@ -113,11 +98,28 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
             '["Taom 1", "Taom 2"]'
         )
         
-        raw_text_response = _generate_with_model_fallback([image, prompt])
-        if not raw_text_response:
-            return []
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=500
+        )
 
-        raw_text = _clean_json_response(raw_text_response)
+        raw_text = response.choices[0].message.content.strip()
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
         if "[" in raw_text and "]" in raw_text:
             start = raw_text.find("[")
             end = raw_text.rfind("]") + 1
@@ -125,16 +127,22 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
             if isinstance(dish_names, list):
                 return dish_names
     except Exception as e:
-        print(f"❌ Tugagan taomlar rasmini o'qishda xatolik: {e}")
+        print(f"❌ OpenAI tugagan taomlarni o'qishda xatolik: {e}")
 
     return []
 
 
 def ask_gemini_agent(user_query: str, context_data: str = "") -> str:
     try:
-        full_prompt = f"Kontekst ma'lumotlari:\n{context_data}\n\nFoydalanuvchi savoli: {user_query}"
-        response_text = _generate_with_model_fallback([full_prompt])
-        return response_text if response_text else "⚠️ AI yordamchi bilan bog'lanishda xatolik yuz berdi."
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "Siz Mazzali restorani uchun aqlli yordamchisiz."},
+                {"role": "user", "content": f"Kontekst ma'lumotlari:\n{context_data}\n\nFoydalanuvchi savoli: {user_query}"}
+            ],
+            max_tokens=800
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        print(f"❌ Gemini AI javob berishda xatolik: {e}")
+        print(f"❌ OpenAI AI yordamchi xatolik: {e}")
         return "⚠️ AI yordamchi bilan bog'lanishda xatolik yuz berdi."

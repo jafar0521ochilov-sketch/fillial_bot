@@ -5,10 +5,9 @@ python-multipart
 aiogram
 aiosqlite
 python-dotenv
-google-genai
+openai
 openpyxl
 pandas
 pillow
 gspread
 google-auth
-

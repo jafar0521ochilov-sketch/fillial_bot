@@ -1,6 +1,6 @@
 ﻿"""
 config.py - Mazzali Inventory & Order Management Bot
-1-Modul: Konfiguratsiya, filiallar, tugmalar va tizim sozlamalari
+Konfiguratsiya, filiallar, tugmalar va tizim sozlamalari (OpenAI versiyasi)
 """
 
 import os
@@ -11,9 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
-# Xavfsiz o'qish (GitHub bloklamasligi uchun)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
 
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "credentials.json")
@@ -65,33 +64,6 @@ DOC_TYPES = {
     "TRANSFER": "Перемещение",
     "FACTORY_ORDER": "Заказ для фабрики"
 }
-
-CASHIER_BUTTONS = [
-    "🌅 Утренний остаток",
-    "📥 Приход по накладной",
-    "🍽️ Общий расход блюд",
-    "✍️ Дополнительный товар (вручную)",
-    "📸 Закончившиеся блюда",
-    "🗑️ Списание",
-    "🔄 Перемещение",
-    "🌙 Вечерний остаток",
-    "🏭 Заказ для фабрики"
-]
-
-ADMIN_BUTTONS = [
-    "📊 Сверка / Недостача",
-    "📈 Живые остатки (Live)",
-    "🤖 Gemini AI Yordamchi",
-    "🧹 Bazani tozalash"
-]
-
-EXTRA_GOODS_HELP_TEXT = (
-    "✍️ *Iltimos, qo'shimcha tovarlarni quyidagi formatda kiriting:*\\n\\n"
-    "`Tovar nomi - Miqdori`\\n\\n"
-    "*Misol:*\\n"
-    "Konteyner 500ml - 100\\n"
-    "Salfetka - 10"
-)
 
 ORDER_INCREASE_PERCENT = 20
 DATA_RETENTION_DAYS = 90
