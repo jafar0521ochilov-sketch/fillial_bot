@@ -1,12 +1,11 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Excel fayldagi valid_menu_items ro'yxatiga qat'iy asoslanib ishlaydigan versiya)
+(Barcha 135 ta rasmiy 1С taom nomlari kod ichiga qat'iy yozilgan versiya)
 """
 import base64
 import io
 import json
 import re
-import pandas as pd
 from PIL import Image
 from openai import OpenAI
 
@@ -15,24 +14,53 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-def load_menu_from_excel(excel_path: str = "10.10.26.xlsx") -> list[str]:
-    """
-    Siz yuborgan Excel fayldan barcha taom va mahsulot nomlarini yuklab olish.
-    """
-    try:
-        df = pd.read_excel(excel_path, sheet_name='Лист1', header=2)
-        if 'Наименование' in df.columns:
-            items = df['Наименование'].dropna().astype(str).tolist()
-            return [i.strip() for i in items if i.strip()]
-    except Exception as e:
-        print(f"⚠️ Excel faylni o'qishda xatolik: {e}")
-    return []
+# 1С dan olingan barcha 135 ta rasmiy taom va mahsulotlarning to'liq ro'yxati
+VALID_MENU_ITEMS = [
+    "Гречка с капустой", "Гарнир Пюре карт.", "Гарнир Рис отв.", 
+    "Драники картофельные с соус.Тар-тар", "Картофель с грибами", 
+    "Тыквенные оладьи с медом", "Бефстроганов с рисом", "Гуляш из говядины с гречкой", 
+    "Долма", "Домашние голубцы", "Котлета говяжья с пюре", "Макароны по-флотски", 
+    "Манты с говядиной", "Медальоны с овощами гриль", "Мясо по-французски", 
+    "Пельмени жареные", "Плов из говядины", "Рваная говядина в сливочно-перечном соусе с картофелем", 
+    "Сардельки с пюре", "Спагетти Болоньезе", "Тефтели домашние", "Тушенка с макаронами", 
+    "Шавля с тыквой", "Школьная котлета с пюре", "Биточки из курицы с рисом и овощ.", 
+    "Гречка по-домашнему с курицей", "Грузинское оджахури с курицей и овощами", 
+    "Жареный рис по-азиатски", "Котлета куриная на пару с пюре", "Котлета куриная по-киевски с пюре", 
+    "Котлета куриная с пюре", "Котлеты куриные на пару (2шт)", "Котлеты куриные по-киевски (2шт)", 
+    "Куриная грудка с овощами на пару", "Куриная грудка с сыром и запеченной тыквой", 
+    "Курица Гриль с овощами", "Курица Карри с рисом", "Курица по-азиатски с рисом", 
+    "Курица по-мексикански", "Курица Терияки с рисом", "Люля куриные с гречкой", 
+    "Оладьи куриные с пюре", "Спагетти Карбонара", "Утиная грудка с картофелем и розмарином", 
+    "Фетучини Альфредо", "Шницель в сырной панировке с пюре", "Рыбная котлета с рисом и овощами", 
+    "Судак на пару", "Десерт Дубайский", "Десерт Медовик", "Десерт Черный лес", 
+    "Рогалики с орехами", "Блины с джемом", "Блины с курицей", "Блины с мясом", 
+    "Блины с Нутеллой", "Блины с творогом", "Бургер", "Каша Овсяная", "Каша Рисовая", 
+    "Кимбап Краб", "Кимбап Курица", "Кимбап Форель", "Клаб сэндвич с Индейкой", 
+    "Клаб сэндвич с Курицей", "Клаб сэндвич с Салями", "Клаб сэндвич с Тунцом", 
+    "Клаб сэндвич с Форелью", "Конвертики с грибами", "Конвертики с запеченной курицей и сыром", 
+    "Конвертики с мясом", "Конвертики с творогом и вишней", "Конвертики со шпинатом и сыром", 
+    "Маффины ассорти (вишневый, шоколадный, цитрусовый)", "Омлет ролл с курицей", 
+    "Омлет ролл со шпинатом и сыром", "ОНИГИРИ с тунцом", "ОНИГИРИ Филадельфия", 
+    "Панкейки с джемом", "Пирожки с вишней", "Пирожки с капустой", "Пирожки с картошкой", 
+    "Пирожки с мясом", "Пирожки с рисом и яйцом", "Пирожки с яблочным джемом", 
+    "Роллы индейка с сыром", "Роллы Цезарь", "Сосиски в тесте", "Сырники", 
+    "Спринг-роллы с овощами и курицей", "Сэндвич Чиабатта с курицей", "Творожная запеканка", 
+    "Шаурма куриная", "Эчпочмаки", "Смузи Витаминный микс", "Смузи Тропический микс", 
+    "Смузи Цитрусовый микс", "Смузи Экзотический микс", "Смузи Ягодный микс", "Лимонад", 
+    "Морс Клубника", "Морс Клюква", "Морс Смородина", "Морс Шиповник", "Напиток Айс-ти", 
+    "Баклажаны по-корейски", "Весенний", "Винегрет", "Винегрет с КАПУСТОЙ", "Витаминка", 
+    "Греческий", "Домашняя Баклажанная Икра", "Зеленый салат с заправкой", "Королевский", 
+    "Крабовый", "Медовый с курицей", "Мимоза", "Морковча", "Нежный с курицей", 
+    "Огурцы по-корейски", "Оливье с колбасой", "Оливье с мясом", "Сельдь под шубой", 
+    "Цезарь с курицей", "Борщ", "Куриный бульон с лапшой", "Мастава", 
+    "Сливочный суп с рыбой и овощным миксом", "Суп с фрикадельками", "Сырный суп с овощами", 
+    "Том Ям с креветками", "Суп-пюре тыквенный", "Чечевичный суп-пюре", "Щи из щавеля"
+]
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     try:
-        # Agar tashqaridan valid_menu_items kelmasa, Excel fayldan o'qib olamiz
         if not valid_menu_items:
-            valid_menu_items = load_menu_from_excel()
+            valid_menu_items = VALID_MENU_ITEMS
 
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
@@ -44,14 +72,19 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
+        
+        # Kod ichidagi barcha taomlar ro'yxatini promptga majburiy qilib kiritamiz
+        menu_list_str = ", ".join([f'"{m}"' for m in valid_menu_items])
 
         prompt = (
             f"{branch_hint}\n"
             "Это кассовый чек или накладная ProFood. Внимательно прочтите ВСЕ строки сверху вниз.\n"
-            "Для каждого блюда или товара укажите точное название на русском языке и его количество (цифру).\n"
-            "Запрещено ставить одинаковые цифры на все строки! У каждой строки свое реальное количество.\n"
+            "ВАЖНО: Названия блюд и товаров должны БУКВАЛЬНО совпадать с официальным списком меню ниже. "
+            "Никаких вымышленных или измененных названий быть не должно!\n\n"
+            f"ОФИЦИАЛЬНЫЙ СПИСОК МЕНЮ: [{menu_list_str}]\n\n"
+            "Для каждого блюда укажите точное название на русском языке из списка выше и его реальное количество (цифру из документа).\n"
             "Верните ответ СТРОГО в формате JSON, используя короткие ключи 'n' (название) и 'q' (количество):\n"
-            '{\n  "items": [\n    {"n": "Гречка с капустой", "q": 4.0},\n    {"n": "Гарнир Пюре карт.", "q": 6.0}\n  ]\n}'
+            '{\n  "items": [\n    {"n": "Точное название из меню", "q": 4.0}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
@@ -60,7 +93,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Вы — профессиональный бухгалтерский помощник. Строго считывайте названия блюд и количества из документов."
+                    "content": "Вы — строгий бухгалтер. Вы сверяете позиции строго по предоставленному списку меню и считываете точные количества с документов на русском языке."
                 },
                 {
                     "role": "user",
@@ -114,7 +147,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 except:
                     pass
 
-        # --- EXCEL FAYLDAGI ASL MENYU BILAN QAT'IY MOSLASH ---
+        # Ro'yxat bilan 100% aniq moslashtiramiz
         if valid_menu_items and items:
             cleaned_items = []
             for it in items:
@@ -122,7 +155,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 qty = it.get("quantity", 1.0)
                 
                 matched_name = name
-                # Excel fayldagi ro'yxatdan aniq mosini yoki eng o'xshashini qidiramiz
                 for vm in valid_menu_items:
                     if name.lower() == vm.lower():
                         matched_name = vm
@@ -144,7 +176,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
     try:
         if not valid_menu_items:
-            valid_menu_items = load_menu_from_excel()
+            valid_menu_items = VALID_MENU_ITEMS
 
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
@@ -152,12 +184,12 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
         image.save(buffered, format="JPEG")
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        prompt = '{"dishes": ["Блюдо 1", "Блюдо 2"]}'
+        prompt = '{"dishes": ["Блюдо 1"]}'
         response = client.chat.completions.create(
             model=MODEL_NAME,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Определите закончившиеся блюда."},
+                {"role": "system", "content": "Определите закончившиеся блюда на русском языке."},
                 {"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}]}
             ],
             max_tokens=2000,
