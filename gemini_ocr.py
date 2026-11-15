@@ -15,32 +15,35 @@ MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki nakladnoyni OpenAI GPT-4o orqali o'qib, barcha qatorlarni qaytaradi.
+    Rasm yoki uzun chekni OpenAI GPT-4o orqali to'liq, bitta qatorini ham qoldirmasdan o'qish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Rasmni proporsiyasini buzmasdan, eni yoki bo'yi bo'yicha proporsional kichraytiramiz
-        image.thumbnail((1200, 4000))
+        # Uzun cheklar uchun o'lchamni biroz kattaroq saqlaymiz (matnlar aniq ko'rinishi uchun)
+        image.thumbnail((1600, 6000))
         
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        branch_hint = f"'{branch_name}' filialiga oid ombor qoldig'i yoki hisoboti." if branch_name else ""
+        branch_hint = f"'{branch_name}' filialiga oid hujjat." if branch_name else ""
         
         menu_text = ""
         if valid_menu_items:
-            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items])
+            menu_text = f"\nQuyida menyu ro'yxati keltirilgan. Tovar nomlarini shunga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items])
 
         prompt = (
             f"{branch_hint}\n"
-            "Bu restoran ichki ombor qoldig'i (inventarizatsiya) ro'yxati. Rasmdagi barcha tovar va taomlarning nomlarini hamda ularning miqdorlarini bittasini ham qoldirmasdan oxirigacha to'liq o'qing!\n"
+            "DIQQAT! Bu juda uzun restoran cheki (yoki hisoboti). "
+            "Sizning vazifangiz — rasmdagi ENG BOSHIDAGI qatordan ENG OXIRGI qatorgacha ("
+            "hatto pastdagi jami summa chiqgan joydan tepadagilarni ham) bitta ham qatorni qoldirmasdan TO'LIQ o'qib chiqish!\n"
+            "Har bir qatordagi tovar nomi (item_name) va uning miqdorini (quantity) aniq ko'rsating.\n"
             f"{menu_text}\n"
-            "Bu moliyaviy chek emas, faqat taomlar qoldig'i. Barcha qatorlarni to'liq JSON massiviga o'tkazing.\n"
-            "Javobni FAQAT quyidagi JSON formatida qaytaring, boshqa hech qanday matn yozmang:\n"
+            "Hech qanday qatorni qisqartirmang, tashlab yubormang yoki umumlashtirmang. Barcha qatorlarni JSON massiviga o'tkazing.\n"
+            "Javobni FAQAT quyidagi formatdagi JSON massivida qaytaring, boshqa matn yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
         
@@ -49,7 +52,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran ombor qoldiqlari qog'ozini o'qib beruvchi yordamchisiz. Berilgan rasmdagi barcha mahsulot nomlari va miqdorlarini aniqlab, faqat JSON formatida qaytarishingiz shart."
+                    "content": "Siz restoran hujjatlari va uzun cheklarni birorta ham qatorini qoldirmasdan o'qib beruvchi mukammal OCR yordamchisiz."
                 },
                 {
                     "role": "user",
@@ -64,48 +67,17 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=4000
+            max_tokens=8000  # Token limitini oshirdik
         )
 
         raw_text = response.choices[0].message.content.strip()
         print(f"🤖 OpenAI GPT-4o OCR xom javobi: {raw_text}")
         
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-        try:
-            data = json.loads(clean_text)
-            if isinstance(data, list):
-                return data
-            elif isinstance(data, dict):
-                for val in data.values():
-                    if isinstance(val, list):
-                        return val
-        except:
-            pass
-
-        items = []
-        matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
-        for name, qty in matches:
-            try:
-                items.append({"item_name": name.strip(), "quantity": float(qty)})
-            except:
-                pass
-        
-        if items:
-            return items
-
-        match = re.search(r'\[\s*\{.*?\}\s*\]', raw_text, re.DOTALL)
-        if match:
-            array_str = match.group(0)
-            parsed_items = json.loads(array_str)
-            if isinstance(parsed_items, list):
-                cleaned_items = []
-                for it in parsed_items:
-                    name = it.get("item_name") or it.get("name") or it.get("title")
-                    qty = it.get("quantity") if it.get("quantity") is not None else it.get("qty", 1.0)
-                    if name:
-                        cleaned_items.append({"item_name": str(name).strip(), "quantity": float(qty or 1.0)})
-                return cleaned_items
-
+        data = json.loads(clean_text)
+        if isinstance(data, list):
+            return data
+            
     except Exception as e:
         print(f"❌ OpenAI GPT-4o OCR xatolik: {e}")
 
