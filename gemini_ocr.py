@@ -1,6 +1,6 @@
 """
-gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli
-(Uzun kassa cheklari va ProFood nakladnoylarini to'liq o'qish uchun optimallashtirilgan versiya)
+gemini_ocr.py -> OpenAI GPT-4o OCR moduli
+(Kassa cheklari va ProFood nakladnoylarini rus tilida mukammal o'qish uchun)
 """
 import base64
 import io
@@ -15,30 +15,26 @@ client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
-    """
-    OpenAI GPT-4o yordamida uzun kassa cheklari va nakladnoy rasmlarini aniq o'qish.
-    """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Rasmni OpenAI uchun optimal o'lchamga keltiramiz (sifatini saqlagan holda)
         image.thumbnail((2000, 8000))
-        
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
 
+        # OpenAI ga rus tilida aniq yozilganidek o'qishni buyuramiz
         prompt = (
             f"{branch_hint}\n"
-            "Bu ProFood rasmiy nakladnoy blanki. Undagi barcha qatorlarni sinchiklab o'qing.\n"
-            "DIQQAT: Har bir taomning yonidagi katakda o'zining shaxsiy soni (raqami) yozilgan (masalan 4, 6, 8, 10 va hokazo). "
-            "Barcha qatorlarga bir xil raqam yozish qat'iyan MAN ETILADI! Har bir qatorning o'zining haqiqiy sonini 'quantity' ga yozing.\n\n"
-            "Javobni FAQAT quyidagi JSON formatida qaytaring, ortiqcha matn yozmang:\n"
-            '{\n  "items": [\n    {"item_name": "Grechka s kapustoy", "quantity": 4.0},\n    {"item_name": "Garnir Pyure kart.", "quantity": 6.0}\n  ]\n}'
+            "Это кассовый чек или накладная ProFood. Внимательно прочтите ВСЕ строки сверху вниз.\n"
+            "Для каждого блюда или товара укажите точное название на русском языке (как написано на изображении) и его количество (цифру из столбца кол-во, остаток или ячеек).\n"
+            "Запрещено ставить одинаковые цифры на все строки! У каждой строки свое реальное количество.\n"
+            "Верните ответ СТРОГО в формате JSON, без лишнего текста, используя короткие ключи 'n' (название) и 'q' (количество):\n"
+            '{\n  "items": [\n    {"n": "Гречка с капустой", "q": 4.0},\n    {"n": "Гарнир Пюре карт.", "q": 6.0}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
@@ -47,7 +43,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran hujjatlari va cheklardagi yozuvlar hamda raqamlarni 100% aniqlikda ko'chirib o'qiydigan professional buxgalter yordamchisiz."
+                    "content": "Вы — профессиональный бухгалтерский помощник, который точно и без ошибок считывает названия блюд на русском языке и их количества с документов."
                 },
                 {
                     "role": "user",
@@ -57,7 +53,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"  # Mayda raqamlar va harflar uchun yuqori aniqlik
+                                "detail": "high"
                             }
                         }
                     ]
@@ -72,40 +68,46 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         print(raw_text[:500] + "..." if len(raw_text) > 500 else raw_text)
         print(f"==========================================================\n")
         
-        # JSON'ni tozalab o'qishga harakat qilamiz
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         items = []
         try:
             data = json.loads(clean_text)
+            raw_items = []
             if isinstance(data, dict):
-                items = data.get("items", [])
-                if not items:
+                raw_items = data.get("items", [])
+                if not raw_items:
                     for val in data.values():
                         if isinstance(val, list):
-                            items = val
+                            raw_items = val
                             break
             elif isinstance(data, list):
-                items = data
-        except Exception:
-            # Agar JSON qismida kichik xatolik bo'lsa, regex orqali item_name va quantity larni sug'urib olamiz
-            matches = re.findall(r'["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)', raw_text)
+                raw_items = data
+                
+            for it in raw_items:
+                name = str(it.get("n") or it.get("item_name") or "").strip()
+                try:
+                    qty = float(it.get("q") or it.get("quantity") or 1.0)
+                except:
+                    qty = 1.0
+                if name:
+                    items.append({"item_name": name, "quantity": qty})
+                    
+        except Exception as e:
+            print(f"⚠️ JSON xatoligi, regex ishga tushdi: {e}")
+            matches = re.findall(r'["\'](?:n|item_name)["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\'](?:q|quantity)["\']\s*:\s*([0-9.]+)', raw_text)
             for name, qty in matches:
                 try:
                     items.append({"item_name": name.strip(), "quantity": float(qty)})
                 except:
                     pass
 
-        # Menyu nomlari bilan solishtirib to'g'rilash
+        # Menyu nomlari bilan moslash
         if valid_menu_items and items:
             cleaned_items = []
             for it in items:
-                name = str(it.get("item_name", "")).strip()
-                try:
-                    qty = float(it.get("quantity", 1.0))
-                except:
-                    qty = 1.0
-                    
+                name = it.get("item_name", "")
+                qty = it.get("quantity", 1.0)
                 matched_name = name
                 for vm in valid_menu_items:
                     if name.lower() == vm.lower():
@@ -126,50 +128,27 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
-        
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        prompt = (
-            "Bu fotosuratda tugagan taomlar ko'rsatilgan. "
-            "Barcha taom nomlarini aniqlang va FAQAT quyidagi JSON formatida qaytaring:\n"
-            '{\n  "dishes": ["Taom 1", "Taom 2"]\n}'
-        )
-        
+        prompt = '{"dishes": ["Блюдо 1", "Блюдо 2"]}'
         response = client.chat.completions.create(
             model=MODEL_NAME,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Siz restoran yordamchisiz. Tugagan taomlar ro'yxatini aniqlang."},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
-                }
+                {"role": "system", "content": "Определите закончившиеся блюда."},
+                {"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}]}
             ],
             max_tokens=2000,
             temperature=0.0
         )
-
         raw_text = response.choices[0].message.content.strip()
-        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean_text)
+        data = json.loads(raw_text.replace("```json", "").replace("```", "").strip())
         if isinstance(data, dict) and "dishes" in data:
             return [str(x) for x in data["dishes"]]
-        elif isinstance(data, list):
-            return [str(x) for x in data]
-    except Exception as e:
-        print(f"❌ Tugagan taomlarni o'qishda xatolik: {e}")
-
+    except:
+        pass
     return []
 
 
@@ -178,12 +157,11 @@ def ask_gemini_agent(user_query: str, context_data: str = "") -> str:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "Siz Mazzali restorani uchun aqlli yordamchisiz."},
-                {"role": "user", "content": f"Kontekst ma'lumotlari:\n{context_data}\n\nFoydalanuvchi savoli: {user_query}"}
+                {"role": "system", "content": "Помощник ресторана Mazzali."},
+                {"role": "user", "content": f"Контекст:\n{context_data}\n\nВопрос: {user_query}"}
             ],
             max_tokens=800
         )
         return response.choices[0].message.content
-    except Exception as e:
-        print(f"❌ OpenAI AI yordamchi xatolik: {e}")
-        return "⚠️ AI yordamchi bilan bog'lanishda xatolik yuz berdi."
+    except:
+        return "⚠️ Ошибка связи с ИИ."
