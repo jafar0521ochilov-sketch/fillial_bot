@@ -29,11 +29,11 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         
         menu_text = ""
         if valid_menu_items:
-            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items[:150]])
+            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items[:200]])
 
         prompt = (
             f"{branch_hint}\n"
-            "Ushbu nakladnoy yoki qoldiq rasmidagi barcha tovar va taomlarning miqdorlarini aniqlang.\n"
+            "Ushbu nakladnoy yoki qoldiq rasmidagi BARCHA 3 TA USTUNDAGI tovar va taomlarning barchasini (1-banddan oxirigacha, bittasini ham qoldirmasdan) va ularning miqdorlarini aniqlang.\n"
             f"{menu_text}\n"
             "DIQQAT: Aslo o'zingizdan nom o'ylab topmang! Faqat qog'ozdagi yozuvga eng mos keladigan haqiqiy nomni yozing.\n"
             "Javobni FAQAT quyidagi JSON massivi formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
@@ -56,7 +56,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=2000
+            max_tokens=4000
         )
 
         raw_text = response.choices[0].message.content.strip()
@@ -138,7 +138,7 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=800
+            max_tokens=2000
         )
 
         raw_text = response.choices[0].message.content.strip()
