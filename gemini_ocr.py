@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Kataklardagi raqamlarni bir xil yozib yuborish xatosini oldini oluvchi versiya)
+(Uzun nakladnoylarni qismlarga bo'lib, raqamlar bo'yicha aniq o'qish versiyasi)
 """
 import base64
 import io
@@ -14,167 +14,145 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-VALID_MENU_ITEMS = [
-    "Гречка с капустой", "Гарнир Пюре карт.", "Гарнир Рис отв.", 
-    "Драники картофельные с соус.Тар-тар", "Картофель с грибами", 
-    "Тыквенные оладьи с медом", "Бефстроганов с рисом", "Гуляш из говядины с гречкой", 
-    "Долма", "Домашние голубцы", "Котлета говяжья с пюре", "Макароны по-флотски", 
-    "Манты с говядиной", "Медальоны с овощами гриль", "Мясо по-французски", 
-    "Пельмени жареные", "Плов из говядины", "Рваная говядина в сливочно-перечном соусе с картофелем", 
-    "Сардельки с пюре", "Спагетти Болоньезе", "Тефтели домашние", "Тушенка с макаронами", 
-    "Шавля с тыквой", "Школьная котлета с пюре", "Биточки из курицы с рисом и овощ.", 
-    "Гречка по-домашнему с курицей", "Грузинское оджахури с курицей и овощами", 
-    "Жареный рис по-азиатски", "Котлета куриная на пару с пюре", "Котлета куриная по-киевски с пюре", 
-    "Котлета куриная с пюре", "Котлеты куриные на пару (2шт)", "Котлеты куриные по-киевски (2шт)", 
-    "Куриная грудка с овощами на пару", "Куриная грудка с сыром и запеченной тыквой", 
-    "Курица Гриль с овощами", "Курица Карри с рисом", "Курица по-азиатски с рисом", 
-    "Курица по-мексикански", "Курица Терияки с рисом", "Люля куриные с гречкой", 
-    "Оладьи куриные с пюре", "Спагетти Карбонара", "Утиная грудка с картофелем и розмарином", 
-    "Фетучини Альфредо", "Шницель в сырной панировке с пюре", "Рыбная котлета с рисом и овощами", 
-    "Судак на пару", "Десерт Дубайский", "Десерт Медовик", "Десерт Черный лес", 
-    "Рогалики с орехами", "Блины с джемом", "Блины с курицей", "Блины с мясом", 
-    "Блины с Нутеллой", "Блины с творогом", "Бургер", "Каша Овсяная", "Каша Рисовая", 
-    "Кимбап Краб", "Кимбап Курица", "Кимбап Форель", "Клаб сэндвич с Индейкой", 
-    "Клаб сэндвич с Курицей", "Клаб сэндвич с Салями", "Клаб сэндвич с Тунцом", 
-    "Клаб сэндвич с Форелью", "Конвертики с грибами", "Конвертики с запеченной курицей и сыром", 
-    "Конвертики с мясом", "Конвертики с творогом и вишней", "Конвертики со шпинатом и сыром", 
-    "Маффины ассорти (вишневый, шоколадный, цитрусовый)", "Омлет ролл с курицей", 
-    "Омлет ролл со шпинатом и сыром", "ОНИГИРИ с тунцом", "ОНИГИРИ Филадельфия", 
-    "Панкейки с джемом", "Пирожки с вишней", "Пирожки с капустой", "Пирожки с картошкой", 
-    "Пирожки с мясом", "Пирожки с рисом и яйцом", "Пирожки с яблочным джемом", 
-    "Роллы индейка с сыром", "Роллы Цезарь", "Сосиски в тесте", "Сырники", 
-    "Спринг-роллы с овощами и курицей", "Сэндвич Чиабатта с курицей", "Творожная запеканка", 
-    "Шаурма куриная", "Эчпочмаки", "Смузи Витаминный микс", "Смузи Тропический микс", 
-    "Смузи Цитрусовый микс", "Смузи Экзотический микс", "Смузи Ягодный микс", "Лимонад", 
-    "Морс Клубника", "Морс Клюква", "Морс Смородина", "Морс Шиповник", "Напиток Айс-ти", 
-    "Баклажаны по-корейски", "Весенний", "Винегрет", "Винегрет с КАПУСТОЙ", "Витаминка", 
-    "Греческий", "Домашняя Баклажанная Икра", "Зеленый салат с заправкой", "Королевский", 
-    "Крабовый", "Медовый с курицей", "Мимоза", "Морковча", "Нежный с курицей", 
-    "Огурцы по-корейски", "Оливье с колбасой", "Оливье с мясом", "Сельдь под шубой", 
-    "Цезарь с курицей", "Борщ", "Куриный бульон с лапшой", "Мастава", 
-    "Сливочный суп с рыбой и овощным миксом", "Суп с фрикадельками", "Сырный суп с овощами", 
-    "Том Ям с креветками", "Суп-пюре тыквенный", "Чечевичный суп-пюре", "Щи из щавеля"
-]
+MENU_ITEMS_WITH_INDEX = {
+    1: "Гречка с капустой", 2: "Гарнир Пюре карт.", 3: "Гарнир Рис отв.", 
+    4: "Драники картофельные с соус.Тар-тар", 5: "Картофель с грибами", 
+    6: "Тыквенные оладьи с медом", 7: "Бефстроганов с рисом", 8: "Гуляш из говядины с гречкой", 
+    9: "Долма", 10: "Домашние голубцы", 11: "Котлета говяжья с пюре", 12: "Макароны по-флотски", 
+    13: "Манты с говядиной", 14: "Медальоны с овощами гриль", 15: "Мясо по-французски", 
+    16: "Пельмени жареные", 17: "Плов из говядины", 18: "Рваная говядина в сливочно-перечном соусе с картофелем", 
+    19: "Сардельки с пюре", 20: "Спагетти Болоньезе", 21: "Тефтели домашние", 22: "Тушенка с макаронами", 
+    23: "Шавля с тыквой", 24: "Школьная котлета с пюре", 25: "Биточки из курицы с рисом и овощ.", 
+    26: "Гречка по-домашнему с курицей", 27: "Грузинское оджахури с курицей и овощами", 
+    28: "Жареный рис по-азиатски", 29: "Котлета куриная на пару с пюре", 30: "Котлета куриная по-киевски с пюре", 
+    31: "Котлета куриная с пюре", 32: "Котлеты куриные на пару (2шт)", 33: "Котлеты куриные по-киевски (2шт)", 
+    34: "Куриная грудка с овощами на пару", 35: "Куриная грудка с сыром и запеченной тыквой", 
+    36: "Курица Гриль с овощами", 37: "Курица Карри с рисом", 38: "Курица по-азиатски с рисом", 
+    39: "Курица по-мексикански", 40: "Курица Терияки с рисом", 41: "Люля куриные с гречкой", 
+    42: "Оладьи куриные с пюре", 43: "Спагетти Карбонара", 44: "Утиная грудка с картофелем и розмарином", 
+    45: "Фетучини Альфредо", 46: "Шницель в сырной панировке с пюре", 47: "Рыбная котлета с рисом и овощами", 
+    48: "Судак на пару", 49: "Десерт Дубайский", 50: "Десерт Медовик", 51: "Десерт Черный лес", 
+    52: "Рогалики с орехами", 53: "Блины с джемом", 54: "Блины с курицей", 55: "Блины с мясом", 
+    56: "Блины с Нутеллой", 57: "Блины с творогом", 58: "Бургер", 59: "Каша Овсяная", 60: "Каша Рисовая", 
+    61: "Кимбап Краб", 62: "Кимбап Курица", 63: "Кимбап Форель", 64: "Клаб сэндвич с Индейкой", 
+    65: "Клаб сэндвич с Курицей", 66: "Клаб сэндвич с Салями", 67: "Клаб сэндвич с Тунцом", 
+    68: "Клаб сэндвич с Форелью", 69: "Конвертики с грибами", 70: "Конвертики с запеченной курицей и сыром", 
+    71: "Конвертики с мясом", 72: "Конвертики с творогом и вишней", 73: "Конвертики со шпинатом и сыром", 
+    74: "Маффины ассорти (вишневый, шоколадный, цитрусовый)", 75: "Омлет ролл с курицей", 
+    76: "Омлет ролл со шпинатом и сыром", 77: "ОНИГИРИ с тунцом", 78: "ОНИГИРИ Филадельфия", 
+    79: "Панкейки с джемом", 80: "Пирожки с вишней", 81: "Пирожки с капустой", 82: "Пирожки с картошкой", 
+    83: "Пирожки с мясом", 84: "Пирожки с рисом и яйцом", 85: "Пирожки с яблочным джемом", 
+    86: "Роллы индейка с сыром", 87: "Роллы Цезарь", 88: "Сосиски в тесте", 89: "Сырники", 
+    90: "Спринг-роллы с овощами и курицей", 91: "Сэндвич Чиабатта с курицей", 92: "Творожная запеканка", 
+    93: "Шаурма куриная", 94: "Эчпочмаки", 95: "Смузи Витаминный микс", 96: "Смузи Тропический микс", 
+    97: "Смузи Цитрусовый микс", 98: "Смузи Экзотический микс", 99: "Смузи Ягодный микс", 100: "Лимонад", 
+    101: "Морс Клубника", 102: "Морс Клюква", 103: "Морс Смородина", 104: "Морс Шиповник", 105: "Напиток Айс-ти", 
+    106: "Баклажаны по-корейски", 107: "Весенний", 108: "Винегрет", 109: "Винегрет с КАПУСТОЙ", 110: "Витаминка", 
+    111: "Греческий", 112: "Домашняя Баклажанная Икра", 113: "Зеленый салат с заправкой", 114: "Королевский", 
+    115: "Крабовый", 116: "Медовый с курицей", 117: "Мимоза", 118: "Морковча", 119: "Нежный с курицей", 
+    120: "Огурцы по-корейски", 121: "Оливье с колбасой", 122: "Оливье с мясом", 123: "Сельдь под шубой", 
+    124: "Цезарь с курицей", 125: "Борщ", 126: "Куриный бульон с лапшой", 127: "Мастава", 
+    128: "Сливочный суп с рыбой и овощным миксом", 129: "Суп с фрикадельками", 130: "Сырный суп с овощами", 
+    131: "Том Ям с креветками", 132: "Суп-пюре тыквенный", 133: "Чечевичный суп-пюре", 134: "Щи из щавеля"
+}
 
-def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
     try:
-        if not valid_menu_items:
-            valid_menu_items = VALID_MENU_ITEMS
-
-        image = Image.open(io.BytesIO(image_bytes))
+        image = Image.open(io.BytesIO(chunk_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        image.thumbnail((2000, 8000))
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
-        menu_list_str = ", ".join([f'"{m}"' for m in valid_menu_items])
+        sub_menu = {k: v for k, v in MENU_ITEMS_WITH_INDEX.items() if start_id <= k <= end_id}
+        menu_str = "\n".join([f"{k}: {v}" for k, v in sub_menu.items()])
 
-        # KRITIK O'ZGARISH: Har bir qator uchun alohida raqamni topishni qat'iy talab qiluvchi prompt
         prompt = (
-            f"{branch_hint}\n"
-            "Это накладная ProFood с таблицей. Внимательно прочтите КАЖДУЮ строку сверху вниз.\n"
-            "КРИТИЧЕСКИ ВАЖНО: В таблице у каждого блюда в ячейке справа написана СВОЯ уникальная цифра (количество). "
-            "Категорически запрещено ставить одинаковые цифры (например, всем 6.0 или всем 4.0)! Посмотрите внимательно на каждую строку и найдите точное число, указанное именно для этого блюда в ячейке.\n\n"
-            f"ОФИЦИАЛЬНЫЙ СПИСОК МЕНЮ: [{menu_list_str}]\n\n"
-            "Для каждого блюда из документа найдите точное название из списка выше и его реальное индивидуальное количество ('q').\n"
+            f"Это часть накладной ProFood (позиции с {start_id} по {end_id}).\n"
+            "Слева указан порядковый номер (№), справа в ячейке — количество.\n"
+            "Для каждого номера укажите точное индивидуальное количество из его ячейки. Запрещено ставить одинаковые цифры всем!\n\n"
+            f"СПИСОК ДЛЯ ЭТОЙ ЧАСТИ:\n{menu_str}\n\n"
             "Верните ответ СТРОГО в формате JSON:\n"
-            '{\n  "items": [\n    {"n": "Название из меню", "q": число_из_ячейки}\n  ]\n}'
+            '{\n  "items": [\n    {"id": ' + str(start_id) + ', "q": число}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
             model=MODEL_NAME,
             response_format={"type": "json_object"},
             messages=[
-                {
-                    "role": "system",
-                    "content": "Вы — внимательный бухгалтер. Вы никогда не путаете и не дублируете цифры из таблиц. Каждая строка имеет свое уникальное количество."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
-                }
+                {"role": "system", "content": "Вы бухгалтер. Считывайте точное количество для каждого номера без дублирования."},
+                {"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}]}
             ],
-            max_tokens=4096,
+            max_tokens=2000,
             temperature=0.0
         )
 
-        raw_text = response.choices[0].message.content.strip()
-        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(response.choices[0].message.content.replace("```json", "").replace("```", "").strip())
+        raw_items = data.get("items", []) if isinstance(data, dict) else data
         
-        items = []
-        try:
-            data = json.loads(clean_text)
-            raw_items = []
-            if isinstance(data, dict):
-                raw_items = data.get("items", [])
-                if not raw_items:
-                    for val in data.values():
-                        if isinstance(val, list):
-                            raw_items = val
-                            break
-            elif isinstance(data, list):
-                raw_items = data
-                
-            for it in raw_items:
-                name = str(it.get("n") or it.get("item_name") or "").strip()
-                try:
-                    qty = float(it.get("q") or it.get("quantity") or 1.0)
-                except:
-                    qty = 1.0
-                if name:
-                    items.append({"item_name": name, "quantity": qty})
-                    
-        except Exception as e:
-            matches = re.findall(r'["\'](?:n|item_name)["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\'](?:q|quantity)["\']\s*:\s*([0-9.]+)', raw_text)
-            for name, qty in matches:
-                try:
-                    items.append({"item_name": name.strip(), "quantity": float(qty)})
-                except:
-                    pass
+        chunk_result = []
+        for it in raw_items:
+            item_id = it.get("id")
+            try:
+                qty = float(it.get("q", 1.0))
+            except:
+                qty = 1.0
+            if item_id and int(item_id) in MENU_ITEMS_WITH_INDEX:
+                chunk_result.append({"item_name": MENU_ITEMS_WITH_INDEX[int(item_id)], "quantity": qty})
+        return chunk_result
+    except Exception as e:
+        print(f"❌ Chunk xatolik ({start_id}-{end_id}): {e}")
+        return []
 
-        if valid_menu_items and items:
-            cleaned_items = []
-            for it in items:
-                name = it.get("item_name", "").strip()
-                qty = it.get("quantity", 1.0)
-                
-                matched_name = name
-                for vm in valid_menu_items:
-                    if name.lower() == vm.lower():
-                        matched_name = vm
-                        break
-                    elif name.lower() in vm.lower() or vm.lower() in name.lower():
-                        matched_name = vm
-                        
-                cleaned_items.append({"item_name": matched_name, "quantity": qty})
-            return cleaned_items
+def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+    """
+    Nakladnoyni 3 ta qismga bo'lib (1-50, 51-100, 101-134), har birining raqamlari bo'yicha aniq o'qish.
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        width, height = image.size
+        all_items = []
 
-        return items
+        # Agar rasm juda uzun bo'lsa (nakladnoy olsa), uni 3 ta qismga bo'lamiz
+        if height > width * 1.2:
+            h_third = height / 3.0
+            
+            # 1-bo'lak (1 - 50)
+            box1 = (0, 0, width, int(h_third * 1.1))
+            buf1 = io.BytesIO()
+            image.crop(box1).save(buf1, format="JPEG", quality=95)
+            all_items.extend(_parse_chunk(buf1.getvalue(), 1, 50))
+            
+            # 2-bo'lak (51 - 100)
+            box2 = (0, int(h_third * 0.9), width, int(h_third * 2.1))
+            buf2 = io.BytesIO()
+            image.crop(box2).save(buf2, format="JPEG", quality=95)
+            all_items.extend(_parse_chunk(buf2.getvalue(), 51, 100))
+            
+            # 3-bo'lak (101 - 134)
+            box3 = (0, int(h_third * 1.9), width, height)
+            buf3 = io.BytesIO()
+            image.crop(box3).save(buf3, format="JPEG", quality=95)
+            all_items.extend(_parse_chunk(buf3.getvalue(), 101, 134))
+        else:
+            # Oddiy kichik kassa cheki bo'lsa
+            all_items.extend(_parse_chunk(image_bytes, 1, 134))
+
+        return all_items
             
     except Exception as e:
-        print(f"❌ OpenAI OCR xatolik: {e}")
+        print(f"❌ OpenAI OCR umumiy xatolik: {e}")
 
     return []
 
 
 def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] = None) -> list[str]:
     try:
-        if not valid_menu_items:
-            valid_menu_items = VALID_MENU_ITEMS
-
         image = Image.open(io.BytesIO(image_bytes))
         image.thumbnail((1024, 1024))
         buffered = io.BytesIO()
@@ -195,18 +173,7 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
         raw_text = response.choices[0].message.content.strip()
         data = json.loads(raw_text.replace("```json", "").replace("```", "").strip())
         if isinstance(data, dict) and "dishes" in data:
-            dishes = [str(x) for x in data["dishes"]]
-            if valid_menu_items:
-                matched_dishes = []
-                for d in dishes:
-                    md = d
-                    for vm in valid_menu_items:
-                        if d.lower() == vm.lower() or d.lower() in vm.lower():
-                            md = vm
-                            break
-                    matched_dishes.append(md)
-                return matched_dishes
-            return dishes
+            return [str(x) for x in data["dishes"]]
     except:
         pass
     return []
