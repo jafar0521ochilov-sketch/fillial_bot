@@ -18,21 +18,15 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
     Rasm yoki nakladnoyni OpenAI GPT-4o orqali o'qib, barcha qatorlarni qaytaradi.
     """
     try:
-        # Rasmni ochib, kvadrat fonchaga o'tkazamiz (uzun cho'ziq rasmlar xavfsizlik filtriga tushib qolmasligi uchun)
-        original_image = Image.open(io.BytesIO(image_bytes))
-        if original_image.mode != 'RGB':
-            original_image = original_image.convert('RGB')
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
             
-        w, h = original_image.size
-        max_side = max(w, h)
-        # Oq fonli kvadrat yaratamiz
-        square_image = Image.new("RGB", (max_side, max_side), (255, 255, 255))
-        square_image.paste(original_image, ((max_side - w) // 2, (max_side - h) // 2))
-        
-        square_image.thumbnail((1280, 1280))
+        # Rasmni proporsiyasini buzmasdan, eni yoki bo'yi bo'yicha proporsional kichraytiramiz
+        image.thumbnail((1200, 4000))
         
         buffered = io.BytesIO()
-        square_image.save(buffered, format="JPEG", quality=95)
+        image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid ombor qoldig'i yoki hisoboti." if branch_name else ""
