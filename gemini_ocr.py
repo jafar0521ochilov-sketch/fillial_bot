@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli
-(Xatoliklarni terminalga aniq chiqarib beruvchi versiya)
+(Rasmdan to'g'ridan-to'g'ri o'qiydigan toza versiya)
 """
 import base64
 import io
@@ -15,7 +15,7 @@ MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Uzun kassa cheklarini o'qish va terminalga xom javobni aniq chiqarish.
+    Uzun kassa cheklarini rasmdan bevosita matn va miqdor bo'yicha o'qish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -29,23 +29,14 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
-        
-        menu_text = ""
-        if valid_menu_items:
-            menu_text = (
-                "\nMENYU RO'YXATI (Faqat shu yerdagi nomlardan foydalaning):\n" + 
-                ", ".join([f"'{m}'" for m in valid_menu_items])
-            )
 
         prompt = (
             f"{branch_hint}\n"
-            "Bu restoran uzun kassa cheki (Obshiy rasxod blyud). "
-            "Rasmdagi har bir qatorni TEPADAN PASTGA qarab o'qing.\n"
-            "Har bir qator uchun:\n"
-            "- item_name: menyudagi tovar nomi\n"
-            "- quantity: o'sha tovarning miqdori (kol-vo ustunidagi haqiqiy raqam, masalan 3.0, 13.0, 1.0 va hokazo. ASLO HAMMASIGA 1 yozmang!)\n"
-            f"{menu_text}\n"
-            "Javobni FAQAT quyidagi JSON formatida, 'items' kaliti ostida massiv ko'rinishida qaytaring:\n"
+            "Bu restoran kassa cheki. Rasmdagi har bir qatorni TEPADAN PASTGA qarab diqqat bilan o'qing.\n"
+            "Har bir qatordan quyidagilarni aniqlang:\n"
+            "1. 'item_name': Chekdagi 'блюдо' ustunida yozilgan taom yoki tovar nomi (aynan chekda qanday yozilgan bo'lsa shunday yozing).\n"
+            "2. 'quantity': 'кол-во' ustunidagi raqam (masalan 3.0, 13.0, 1.0 va hokazo. Aslo hammasiga 1 yozmang, chekdagi haqiqiy miqdorni qo'ying!)\n\n"
+            "Javobni FAQAT quyidagi JSON formatida, 'items' kaliti ostida massiv ko'rinishida qaytaring, boshqa hech qanday matn yozmang:\n"
             '{\n  "items": [\n    {"item_name": "Tovar Nomi", "quantity": 3.0}\n  ]\n}'
         )
         
@@ -55,7 +46,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran cheklari va hisobotlarini raqamlari va menyu nomlari bilan aniq o'qiydigan professional buxgalter yordamchisiz."
+                    "content": "Siz cheklardagi yozuvlar va raqamlarni aniq ko'chirib o'qiydigan buxgalter yordamchisiz."
                 },
                 {
                     "role": "user",
@@ -76,8 +67,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         )
 
         raw_text = response.choices[0].message.content.strip()
-        
-        # --- BU YERDA TERMINALGA ANIQ CHIQISHINI TA'MINLAYMIZ ---
         print(f"\n================ 🤖 OPENAI OCR XOM JAVOBI ================")
         print(raw_text)
         print(f"==========================================================\n")
@@ -86,7 +75,23 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         
         if isinstance(data, dict):
             if "items" in data and isinstance(data["items"], list):
-                return data["items"]
+                items = data["items"]
+                # Agar valid_menu_items berilgan bo'lsa, nomlarini bazadagiga moslab olamiz
+                if valid_menu_items:
+                    cleaned_items = []
+                    for it in items:
+                        name = it.get("item_name", "").strip()
+                        qty = float(it.get("quantity", 1.0))
+                        # Aniq yoki o'xshash nomni qidiramiz
+                        matched_name = name
+                        for vm in valid_menu_items:
+                            if name.lower() == vm.lower():
+                                matched_name = vm
+                                break
+                        cleaned_items.append({"item_name": matched_name, "quantity": qty})
+                    return cleaned_items
+                return items
+                
             for val in data.values():
                 if isinstance(val, list):
                     return val
