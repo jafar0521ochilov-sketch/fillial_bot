@@ -41,13 +41,15 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
         prompt = (
             f"{branch_hint}\n"
-            "Bu restoran uzun kassa cheki (Obshiy rasxod blyud). "
-            "Rasmdagi har bir qatorni TEPADAN PASTGA qarab diqqat bilan o'qing: "
-            "1-ustun: Kod, 2-ustun: Taom nomi (блюдо), 3-ustun: Miqdori (кол-во, masalan 3.0, 1.0, 13.0).\n"
-            "Miqdorlarni boshqa ustunlardagi summalar (summa) bilan adashtirib yubormang! Faqat 'кол-во' ustunidagi haqiqiy miqdorni oling.\n"
+            "DIQQAT! Bu restoran uzun kassa cheki. Uni tepadagidan pastgacha qatorma-qator o'qing.\n"
+            "Har bir qatorda 3 ta muhim narsa bor:\n"
+            "1. Tovar nomi (блюдо)\n"
+            "2. Miqdori (кол-во ustunidagi raqam: masalan 3.0, 13.0, 1.0, 2.0 va hokazo). ASLO HAMMASIGA 1 deb yozmang!\n"
+            "3. Summa (buni quantity'ga yozmang!)\n\n"
+            "Faqat 'кол-во' ustunidagi haqiqiy sonni 'quantity' qiymatiga yozing. Agar miqdor 3 bo'lsa 3.0, 13 bo'lsa 13.0 yozing.\n"
             f"{menu_text}\n"
-            "Barcha qatorlarni to'liq o'qib chiqib, FAQAT quyidagi JSON formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
-            '{\n  "items": [\n    {"item_name": "Tovar Nomi", "quantity": 1.0}\n  ]\n}'
+            "Javobni FAQAT quyidagi JSON formatida qaytaring:\n"
+            '{\n  "items": [\n    {"item_name": "Tovar Nomi", "quantity": 3.0}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
