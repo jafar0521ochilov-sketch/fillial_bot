@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Uzun cheklarni avtomatik bo'laklarga bo'lib, token limitidan oshirmasdan o'qish)
+(Uzun cheklarni OpenAI token limitiga sig'adigan qilib xavfsiz bo'laklarga bo'lib o'qish)
 """
 import base64
 import io
@@ -13,23 +13,24 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-def _parse_single_chunk(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+def _parse_single_chunk(image_bytes: bytes, branch_name: str = "") -> list[dict]:
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        image.thumbnail((1600, 3000))
+        # OpenAI uchun tasvirni xavfsiz hajmga keltiramiz
+        image.thumbnail((1200, 2000))
         buffered = io.BytesIO()
-        image.save(buffered, format="JPEG", quality=95)
+        image.save(buffered, format="JPEG", quality=90)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
 
         prompt = (
             f"{branch_hint}\n"
-            "Bu restoran kassa cheki yoki uning bir qismi. Rasmdagi ko'rinib turgan barcha qatorlarni o'qing:\n"
-            "1. 'item_name': Taom yoki tovar nomi.\n"
+            "Bu restoran kassa cheki bo'lagi. Rasmdagi barcha qatorlarni o'qing:\n"
+            "1. 'item_name': Tovar yoki taom nomi\n"
             "2. 'quantity': 'кол-во' ustunidagi raqam (masalan 3.0, 13.0, 1.0 va hokazo. Aslo hammasiga 1 yozmang!)\n\n"
             "Javobni FAQAT quyidagi JSON formatida, 'items' kaliti ostida massiv ko'rinishida qaytaring:\n"
             '{\n  "items": [\n    {"item_name": "Tovar Nomi", "quantity": 3.0}\n  ]\n}'
@@ -57,7 +58,7 @@ def _parse_single_chunk(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=3000,
+            max_tokens=2000,  # Token limitidan oshib ketmasligi uchun cheklangan
             temperature=0.0
         )
 
@@ -81,7 +82,7 @@ def _parse_single_chunk(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Uzun chekni avtomatik ravishda qismlarga bo'lib o'qiydi va birlashtiradi.
+    Uzun chekni avtomatik ravishda qismlarga bo'lib, OpenAI orqali xavfsiz o'qish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -91,10 +92,10 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         width, height = image.size
         all_items = []
 
-        # Agar rasm uzun bo'lsa, uni teng yarmiga (yoki bo'laklarga) bo'lamiz
-        if height > width * 1.5:
-            chunk_height = int(width * 1.5)
-            overlap = 150
+        # Agar chek uzun bo'lsa, uni har biri taxminan 1.2 nisbatdagi bo'laklarga bo'lamiz
+        if height > width * 1.3:
+            chunk_height = int(width * 1.2)
+            overlap = 100
             
             y = 0
             chunk_index = 1
@@ -103,21 +104,20 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 chunk_img = image.crop(box)
                 
                 chunk_buffered = io.BytesIO()
-                chunk_img.save(chunk_buffered, format="JPEG", quality=95)
+                chunk_img.save(chunk_buffered, format="JPEG", quality=90)
                 chunk_bytes = chunk_buffered.getvalue()
                 
-                print(f"🔄 Uzun chekning {chunk_index}-bo'lagi o'qilmoqda...")
-                chunk_items = _parse_single_chunk(chunk_bytes, branch_name, valid_menu_items)
+                print(f"🔄 Uzun chekning {chunk_index}-bo'lagi OpenAI ga yuborilmoqda...")
+                chunk_items = _parse_single_chunk(chunk_bytes, branch_name)
                 
                 for item in chunk_items:
-                    # Takrorlanib qolmaganlarini qo'shamiz
                     if item not in all_items:
                         all_items.append(item)
                 
                 y += chunk_height
                 chunk_index += 1
         else:
-            all_items = _parse_single_chunk(image_bytes, branch_name, valid_menu_items)
+            all_items = _parse_single_chunk(image_bytes, branch_name)
             
         # Menyu nomlarini moslash
         if valid_menu_items and all_items:
@@ -165,7 +165,7 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=2000,
+            max_tokens=1500,
             temperature=0.0
         )
 
