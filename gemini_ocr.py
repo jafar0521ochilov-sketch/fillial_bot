@@ -15,7 +15,7 @@ MODEL_NAME = "gpt-4o-mini"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki chekni OpenAI GPT-4o-mini orqali o'qib, mahsulotlar va miqdorlarni qaytaradi.
+    Rasm yoki chekni OpenAI GPT-4o-mini orqali o'qib, faqat bazadagi haqiqiy taomlar nomlari bilan taqqoslab qaytaradi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -26,17 +26,20 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid nakladnoy yoki qoldiq rasmi." if branch_name else ""
+        
+        menu_text = ""
+        if valid_menu_items:
+            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items[:150]])
 
         prompt = (
             f"{branch_hint}\n"
-            "Ushbu nakladnoy yoki qoldiq rasmidagi barcha tovar va taomlarning HAQIQIY NOMLARINI (masalan: 'Grechka s kapustoy', 'Kuritsa po-meksikanski' va hokazo) hamda ularning miqdorlarini aniqlang.\n"
-            "DIQQAT: Aslo 'Tovar 1', 'Tovar 2' kabi umumiy yoki taxminiy so'zlardan foydalanmang! Faqat qog'ozda yozilgan aniq nomlarni yozing.\n"
+            "Ushbu nakladnoy yoki qoldiq rasmidagi barcha tovar va taomlarning miqdorlarini aniqlang.\n"
+            f"{menu_text}\n"
+            "DIQQAT: Aslo o'zingizdan nom o'ylab topmang! Faqat qog'ozdagi yozuvga eng mos keladigan haqiqiy nomni yozing.\n"
             "Javobni FAQAT quyidagi JSON massivi formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
         
-        
-
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -74,7 +77,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
 
         # 2. Zaxira: Regex orqali barcha {} bloklarini topib yig'ib olish
         items = []
-        # JSON obyektlarini topish uchun regex
         matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
         for name, qty in matches:
             try:
