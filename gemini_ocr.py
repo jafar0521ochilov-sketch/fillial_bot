@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli
-(Yuqori aniqlikdagi detail: high rejimi bilan uzun cheklarni o'qish)
+(Xatoliklarni terminalga aniq chiqarib beruvchi versiya)
 """
 import base64
 import io
@@ -15,14 +15,13 @@ MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Uzun kassa cheklarini detail: high yordamida bitta ham qatorni qoldirmasdan aniq o'qish.
+    Uzun kassa cheklarini o'qish va terminalga xom javobni aniq chiqarish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Rasmni hajmini mutanosib saqlaymiz (juda kichraytirmaymiz)
         image.thumbnail((2000, 8000))
         
         buffered = io.BytesIO()
@@ -34,21 +33,19 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         menu_text = ""
         if valid_menu_items:
             menu_text = (
-                "\nRASMIY MENYU RO'YXATI:\n"
-                "Faqat quyidagi ro'yxatda mavjud bo'lgan tovar nomlarini yozing. O'zingizdan nom o'ylab topmang:\n" + 
+                "\nMENYU RO'YXATI (Faqat shu yerdagi nomlardan foydalaning):\n" + 
                 ", ".join([f"'{m}'" for m in valid_menu_items])
             )
 
         prompt = (
             f"{branch_hint}\n"
-            "DIQQAT! Bu restoran uzun kassa cheki. Uni tepadagidan pastgacha qatorma-qator o'qing.\n"
-            "Har bir qatorda 3 ta muhim narsa bor:\n"
-            "1. Tovar nomi (блюдо)\n"
-            "2. Miqdori (кол-во ustunidagi raqam: masalan 3.0, 13.0, 1.0, 2.0 va hokazo). ASLO HAMMASIGA 1 deb yozmang!\n"
-            "3. Summa (buni quantity'ga yozmang!)\n\n"
-            "Faqat 'кол-во' ustunidagi haqiqiy sonni 'quantity' qiymatiga yozing. Agar miqdor 3 bo'lsa 3.0, 13 bo'lsa 13.0 yozing.\n"
+            "Bu restoran uzun kassa cheki (Obshiy rasxod blyud). "
+            "Rasmdagi har bir qatorni TEPADAN PASTGA qarab o'qing.\n"
+            "Har bir qator uchun:\n"
+            "- item_name: menyudagi tovar nomi\n"
+            "- quantity: o'sha tovarning miqdori (kol-vo ustunidagi haqiqiy raqam, masalan 3.0, 13.0, 1.0 va hokazo. ASLO HAMMASIGA 1 yozmang!)\n"
             f"{menu_text}\n"
-            "Javobni FAQAT quyidagi JSON formatida qaytaring:\n"
+            "Javobni FAQAT quyidagi JSON formatida, 'items' kaliti ostida massiv ko'rinishida qaytaring:\n"
             '{\n  "items": [\n    {"item_name": "Tovar Nomi", "quantity": 3.0}\n  ]\n}'
         )
         
@@ -58,7 +55,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran cheklari va hisobotlarini raqamlari va menyu nomlari bilan 100% aniqlikda o'qiydigan professional buxgalter yordamchisiz."
+                    "content": "Siz restoran cheklari va hisobotlarini raqamlari va menyu nomlari bilan aniq o'qiydigan professional buxgalter yordamchisiz."
                 },
                 {
                     "role": "user",
@@ -68,7 +65,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"  # <-- ENG MUHIM QISM: Mayda harflar va raqamlarni aniq o'qish uchun yuqori aniqlik
+                                "detail": "high"
                             }
                         }
                     ]
@@ -79,6 +76,12 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         )
 
         raw_text = response.choices[0].message.content.strip()
+        
+        # --- BU YERDA TERMINALGA ANIQ CHIQISHINI TA'MINLAYMIZ ---
+        print(f"\n================ 🤖 OPENAI OCR XOM JAVOBI ================")
+        print(raw_text)
+        print(f"==========================================================\n")
+        
         data = json.loads(raw_text)
         
         if isinstance(data, dict):
