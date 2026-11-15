@@ -1,5 +1,6 @@
 """
-gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli (Xavfsizlik filtrini chetlab o'tuvchi versiya)
+gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli
+(Uzun cheklar va hisobotlarni to'liq o'qish uchun qat'iy menyu moslashtiruvchi versiya)
 """
 import base64
 import io
@@ -15,35 +16,39 @@ MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki uzun chekni OpenAI GPT-4o orqali to'liq, bitta qatorini ham qoldirmasdan o'qish.
+    Rasm yoki uzun chekni OpenAI GPT-4o orqali meniga qat'iy moslab, birorta ham qatorni qoldirmasdan o'qish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Uzun cheklar uchun o'lchamni biroz kattaroq saqlaymiz (matnlar aniq ko'rinishi uchun)
-        image.thumbnail((1600, 6000))
+        # Uzun cheklar uchun o'lchamni kengroq va aniq saqlaymiz
+        image.thumbnail((2000, 8000))
         
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        branch_hint = f"'{branch_name}' filialiga oid hujjat." if branch_name else ""
+        branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
         
         menu_text = ""
         if valid_menu_items:
-            menu_text = f"\nQuyida menyu ro'yxati keltirilgan. Tovar nomlarini shunga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items])
+            menu_text = (
+                "\nQUYIDAGI RASMIY MENYU RO'YXATI BILAN TO'LIQ SOLISHTIRING:\n"
+                "Faqat va faqat quyidagi ro'yxatda mavjud bo'lgan tovar nomlarini yozing. "
+                "O'zingizdan nom o'ylab topmang yoki o'zgartirmang:\n" + 
+                ", ".join([f"'{m}'" for m in valid_menu_items])
+            )
 
         prompt = (
             f"{branch_hint}\n"
-            "DIQQAT! Bu juda uzun restoran cheki (yoki hisoboti). "
-            "Sizning vazifangiz — rasmdagi ENG BOSHIDAGI qatordan ENG OXIRGI qatorgacha ("
-            "hatto pastdagi jami summa chiqgan joydan tepadagilarni ham) bitta ham qatorni qoldirmasdan TO'LIQ o'qib chiqish!\n"
-            "Har bir qatordagi tovar nomi (item_name) va uning miqdorini (quantity) aniq ko'rsating.\n"
+            "Bu restoran uzun kassa cheki yoki hisoboti. "
+            "Rasmdagi har bir qatorni diqqat bilan o'qing: kod, блюдо (taom nomi), va кол-во (miqdori).\n"
+            "Miqdorlarni (masalan 3.0, 13.0, 1.0) adashtirmasdan o'ng tarafdagi miqdor ustunidan aniq oling.\n"
             f"{menu_text}\n"
-            "Hech qanday qatorni qisqartirmang, tashlab yubormang yoki umumlashtirmang. Barcha qatorlarni JSON massiviga o'tkazing.\n"
-            "Javobni FAQAT quyidagi formatdagi JSON massivida qaytaring, boshqa matn yozmang:\n"
+            "Barcha qatorlarni boshidan oxirigacha bittasini ham qoldirmasdan o'qib chiqib, "
+            "FAQAT quyidagi JSON formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
         
@@ -52,7 +57,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran hujjatlari va uzun cheklarni birorta ham qatorini qoldirmasdan o'qib beruvchi mukammal OCR yordamchisiz."
+                    "content": "Siz restoran cheklari va hisobotlarini aniq raqamlar va menyu nomlari bilan o'qiydigan qat'iy buxgalter yordamchisiz."
                 },
                 {
                     "role": "user",
@@ -67,17 +72,36 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=8000  # Token limitini oshirdik
+            max_tokens=8000,
+            temperature=0.0
         )
 
         raw_text = response.choices[0].message.content.strip()
         print(f"🤖 OpenAI GPT-4o OCR xom javobi: {raw_text}")
         
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean_text)
-        if isinstance(data, list):
-            return data
-            
+        try:
+            data = json.loads(clean_text)
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict):
+                for val in data.values():
+                    if isinstance(val, list):
+                        return val
+        except:
+            pass
+
+        items = []
+        matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
+        for name, qty in matches:
+            try:
+                items.append({"item_name": name.strip(), "quantity": float(qty)})
+            except:
+                pass
+        
+        if items:
+            return items
+
     except Exception as e:
         print(f"❌ OpenAI GPT-4o OCR xatolik: {e}")
 
@@ -116,7 +140,8 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
                     ]
                 }
             ],
-            max_tokens=2000
+            max_tokens=2000,
+            temperature=0.0
         )
 
         raw_text = response.choices[0].message.content.strip()
