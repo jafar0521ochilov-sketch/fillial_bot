@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Barcha 135 ta rasmiy 1С taom nomlari kod ichiga qat'iy yozilgan versiya)
+(Kataklardagi raqamlarni bir xil yozib yuborish xatosini oldini oluvchi versiya)
 """
 import base64
 import io
@@ -14,7 +14,6 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-# 1С dan olingan barcha 135 ta rasmiy taom va mahsulotlarning to'liq ro'yxati
 VALID_MENU_ITEMS = [
     "Гречка с капустой", "Гарнир Пюре карт.", "Гарнир Рис отв.", 
     "Драники картофельные с соус.Тар-тар", "Картофель с грибами", 
@@ -72,19 +71,18 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         branch_hint = f"'{branch_name}' filialiga oid hisobot." if branch_name else ""
-        
-        # Kod ichidagi barcha taomlar ro'yxatini promptga majburiy qilib kiritamiz
         menu_list_str = ", ".join([f'"{m}"' for m in valid_menu_items])
 
+        # KRITIK O'ZGARISH: Har bir qator uchun alohida raqamni topishni qat'iy talab qiluvchi prompt
         prompt = (
             f"{branch_hint}\n"
-            "Это кассовый чек или накладная ProFood. Внимательно прочтите ВСЕ строки сверху вниз.\n"
-            "ВАЖНО: Названия блюд и товаров должны БУКВАЛЬНО совпадать с официальным списком меню ниже. "
-            "Никаких вымышленных или измененных названий быть не должно!\n\n"
+            "Это накладная ProFood с таблицей. Внимательно прочтите КАЖДУЮ строку сверху вниз.\n"
+            "КРИТИЧЕСКИ ВАЖНО: В таблице у каждого блюда в ячейке справа написана СВОЯ уникальная цифра (количество). "
+            "Категорически запрещено ставить одинаковые цифры (например, всем 6.0 или всем 4.0)! Посмотрите внимательно на каждую строку и найдите точное число, указанное именно для этого блюда в ячейке.\n\n"
             f"ОФИЦИАЛЬНЫЙ СПИСОК МЕНЮ: [{menu_list_str}]\n\n"
-            "Для каждого блюда укажите точное название на русском языке из списка выше и его реальное количество (цифру из документа).\n"
-            "Верните ответ СТРОГО в формате JSON, используя короткие ключи 'n' (название) и 'q' (количество):\n"
-            '{\n  "items": [\n    {"n": "Точное название из меню", "q": 4.0}\n  ]\n}'
+            "Для каждого блюда из документа найдите точное название из списка выше и его реальное индивидуальное количество ('q').\n"
+            "Верните ответ СТРОГО в формате JSON:\n"
+            '{\n  "items": [\n    {"n": "Название из меню", "q": число_из_ячейки}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
@@ -93,7 +91,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Вы — строгий бухгалтер. Вы сверяете позиции строго по предоставленному списку меню и считываете точные количества с документов на русском языке."
+                    "content": "Вы — внимательный бухгалтер. Вы никогда не путаете и не дублируете цифры из таблиц. Каждая строка имеет свое уникальное количество."
                 },
                 {
                     "role": "user",
@@ -147,7 +145,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 except:
                     pass
 
-        # Ro'yxat bilan 100% aniq moslashtiramiz
         if valid_menu_items and items:
             cleaned_items = []
             for it in items:
