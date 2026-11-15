@@ -1,5 +1,5 @@
 """
-gemini_ocr.py -> OpenAI GPT-4o-mini OCR & AI Agent moduli (Kuchaytirilgan versiya)
+gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli (To'liq versiya)
 """
 import base64
 import io
@@ -11,15 +11,16 @@ from openai import OpenAI
 import config
 
 client = OpenAI(api_key=config.OPENAI_API_KEY)
-MODEL_NAME = "gpt-4o-mini"
+# Eng kuchli vizual modelga o'tkazildi (112 ta elementni to'liq o'qishi uchun)
+MODEL_NAME = "gpt-4o"
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki chekni OpenAI GPT-4o-mini orqali o'qib, faqat bazadagi haqiqiy taomlar nomlari bilan taqqoslab qaytaradi.
+    Rasm yoki nakladnoyni OpenAI GPT-4o orqali to'liq o'qib, barcha qatorlarni qaytaradi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
-        image.thumbnail((1024, 1024))
+        image.thumbnail((1600, 1600)) # Katta rasm tafsilotlari yaxshiroq ko'rinishi uchun o'lcham kattalashtirildi
         
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
@@ -29,14 +30,14 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         
         menu_text = ""
         if valid_menu_items:
-            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items[:200]])
+            menu_text = f"\nQuyida ushbu filialning rasmiy menyusi keltirilgan. Rasmdagi tovar nomlarini FAQAT SHU RO'YXATdagi aniq nomlarga moslang:\n" + ", ".join([f"'{m}'" for m in valid_menu_items])
 
         prompt = (
             f"{branch_hint}\n"
-            "Ushbu nakladnoy yoki qoldiq rasmidagi BARCHA 3 TA USTUNDAGI tovar va taomlarning barchasini (1-banddan oxirigacha, bittasini ham qoldirmasdan) va ularning miqdorlarini aniqlang.\n"
+            "DIQQAT: Bu yerda 1 dan 112 gacha bo'lgan juda katta jadval (nakladnoy) tasvirlangan. 3 ta ustundagi BARCHA tovar va taomlarning nomlarini hamda ularning miqdorlarini BITTASINI HAM QOLDirmasdan oxirigacha to'liq o'qing!\n"
             f"{menu_text}\n"
-            "DIQQAT: Aslo o'zingizdan nom o'ylab topmang! Faqat qog'ozdagi yozuvga eng mos keladigan haqiqiy nomni yozing.\n"
-            "Javobni FAQAT quyidagi JSON massivi formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
+            "Aslo o'zingizdan nom o'ylab topmang va 10 ta element bilan cheklanib qolmang. Jadvaldagi barcha qatorlarni to'liq JSON massiviga o'tkazing.\n"
+            "Javobni FAQAT quyidagi JSON formatida qaytaring, boshqa hech qanday matn yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
         
@@ -60,9 +61,8 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         )
 
         raw_text = response.choices[0].message.content.strip()
-        print(f"🤖 OpenAI OCR xom javobi: {raw_text}")
+        print(f"🤖 OpenAI GPT-4o OCR xom javobi: {raw_text}")
         
-        # 1. Tozalab o'qishga urinish
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         try:
             data = json.loads(clean_text)
@@ -75,7 +75,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         except:
             pass
 
-        # 2. Zaxira: Regex orqali barcha {} bloklarini topib yig'ib olish
         items = []
         matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
         for name, qty in matches:
@@ -87,7 +86,6 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         if items:
             return items
 
-        # 3. Umumiyroq massivni qidirish
         match = re.search(r'\[\s*\{.*?\}\s*\]', raw_text, re.DOTALL)
         if match:
             array_str = match.group(0)
@@ -102,7 +100,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                 return cleaned_items
 
     except Exception as e:
-        print(f"❌ OpenAI OCR xatolik: {e}")
+        print(f"❌ OpenAI GPT-4o OCR xatolik: {e}")
 
     return []
 
