@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR & AI Agent moduli
-(Uzun cheklar va hisobotlarni to'liq o'qish uchun qat'iy menyu moslashtiruvchi versiya)
+(Uzun cheklarni avtomatik bo'laklarga bo'lib, mukammal o'qiydigan versiya)
 """
 import base64
 import io
@@ -14,18 +14,16 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+def _parse_single_chunk(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Rasm yoki uzun chekni OpenAI GPT-4o orqali meniga qat'iy moslab, birorta ham qatorni qoldirmasdan o'qish.
+    Bitta rasm bo'lagini (chunk) OpenAI orqali aniq o'qish.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Uzun cheklar uchun o'lchamni kengroq va aniq saqlaymiz
-        image.thumbnail((2000, 8000))
-        
+        image.thumbnail((1600, 4000))
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG", quality=95)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -35,20 +33,16 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         menu_text = ""
         if valid_menu_items:
             menu_text = (
-                "\nQUYIDAGI RASMIY MENYU RO'YXATI BILAN TO'LIQ SOLISHTIRING:\n"
-                "Faqat va faqat quyidagi ro'yxatda mavjud bo'lgan tovar nomlarini yozing. "
-                "O'zingizdan nom o'ylab topmang yoki o'zgartirmang:\n" + 
+                "\nMENYU RO'YXATI BILAN SOLISHTIRING:\n"
+                "Faqat quyidagi ro'yxatda mavjud bo'lgan tovar nomlarini yozing. O'zingizdan nom o'ylab topmang:\n" + 
                 ", ".join([f"'{m}'" for m in valid_menu_items])
             )
 
         prompt = (
             f"{branch_hint}\n"
-            "Bu restoran uzun kassa cheki yoki hisoboti. "
-            "Rasmdagi har bir qatorni diqqat bilan o'qing: kod, блюдо (taom nomi), va кол-во (miqdori).\n"
-            "Miqdorlarni (masalan 3.0, 13.0, 1.0) adashtirmasdan o'ng tarafdagi miqdor ustunidan aniq oling.\n"
+            "Bu restoran cheki yoki uning bir qismi. Rasmdagi barcha qatorlarni o'qing: taom nomi va miqdori (кол-во).\n"
             f"{menu_text}\n"
-            "Barcha qatorlarni boshidan oxirigacha bittasini ham qoldirmasdan o'qib chiqib, "
-            "FAQAT quyidagi JSON formatida qaytaring, boshqa hech qanday izoh yozmang:\n"
+            "Barcha qatorlarni to'liq o'qib chiqib, FAQAT quyidagi JSON formatida qaytaring, boshqa matn yozmang:\n"
             '[\n  {"item_name": "Tovar Nomi", "quantity": 1.0}\n]'
         )
         
@@ -57,7 +51,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             messages=[
                 {
                     "role": "system",
-                    "content": "Siz restoran cheklari va hisobotlarini aniq raqamlar va menyu nomlari bilan o'qiydigan qat'iy buxgalter yordamchisiz."
+                    "content": "Siz restoran cheklari va hisobotlarini aniq raqamlar va menyu nomlari bilan o'qiydigan yordamchisiz."
                 },
                 {
                     "role": "user",
@@ -72,35 +66,67 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
                     ]
                 }
             ],
-            max_tokens=8000,
+            max_tokens=4000,
             temperature=0.0
         )
 
         raw_text = response.choices[0].message.content.strip()
-        print(f"🤖 OpenAI GPT-4o OCR xom javobi: {raw_text}")
-        
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-        try:
-            data = json.loads(clean_text)
-            if isinstance(data, list):
-                return data
-            elif isinstance(data, dict):
-                for val in data.values():
-                    if isinstance(val, list):
-                        return val
-        except:
-            pass
-
-        items = []
-        matches = re.findall(r'\{\s*["\']item_name["\']\s*:\s*["\'](.*?)["\']\s*,\s*["\']quantity["\']\s*:\s*([0-9.]+)\s*\}', raw_text, re.DOTALL)
-        for name, qty in matches:
-            try:
-                items.append({"item_name": name.strip(), "quantity": float(qty)})
-            except:
-                pass
         
-        if items:
-            return items
+        data = json.loads(clean_text)
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict):
+            for val in data.values():
+                if isinstance(val, list):
+                    return val
+    except Exception as e:
+        print(f"❌ Chunk o'qishda xatolik: {e}")
+
+    return []
+
+
+def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
+    """
+    Agar rasm juda uzun bo'lsa, uni avtomatik ravishda bir nechta bo'lakka bo'lib o'qiydi va birlashtiradi.
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        width, height = image.size
+        all_items = []
+
+        # Agar chek uzunligi enidan 1.5 barobar ko'p bo'lsa, uni bo'laklarga bo'lamiz
+        if height > width * 1.5:
+            chunk_height = int(width * 1.6)  # Har bir bo'lak balandligi
+            overlap = 150  # Qatorlar tushib qolmasligi uchun qismdan-qismga o'tish chegarasi
+            
+            y = 0
+            chunk_index = 1
+            while y < height:
+                box = (0, max(0, y - (overlap if y > 0 else 0)), width, min(height, y + chunk_height))
+                chunk_img = image.crop(box)
+                
+                chunk_buffered = io.BytesIO()
+                chunk_img.save(chunk_buffered, format="JPEG", quality=95)
+                chunk_bytes = chunk_buffered.getvalue()
+                
+                print(f"🔄 Uzun chekning {chunk_index}-bo'lagi tahlil qilinmoqda...")
+                chunk_items = _parse_single_chunk(chunk_bytes, branch_name, valid_menu_items)
+                
+                # Takrorlangan elementlar chiqib qolsa, ularni qo'shib yubormasdan to'g'rilaymiz
+                for item in chunk_items:
+                    if item not in all_items:
+                        all_items.append(item)
+                
+                y += chunk_height
+                chunk_index += 1
+        else:
+            all_items = _parse_single_chunk(image_bytes, branch_name, valid_menu_items)
+            
+        return all_items
 
     except Exception as e:
         print(f"❌ OpenAI GPT-4o OCR xatolik: {e}")
@@ -160,7 +186,7 @@ def parse_finished_dishes_photo(image_bytes: bytes, valid_menu_items: list[str] 
     return []
 
 
-def ask_gemini_agent(user_query: str, context_data: str = "") -> str:
+def app_gemini_agent(user_query: str, context_data: str = "") -> str:
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
