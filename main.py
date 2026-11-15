@@ -1,6 +1,6 @@
 """
 main.py - Mazzali Telegram Mini App & Bot (Webhook Rejimi)
-Lokal Excel birinchi o'ringa qo'yilgan versiya
+Yangi operatsiyalar (Списание по сроку, Списание по порче, Общий расход блюд) bilan to'liq versiya
 """
 
 import asyncio
@@ -28,8 +28,7 @@ bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fillial-bot.onrender.com")
-# Kesh muammosini hal qilish uchun ?v=4 qo'shildi
-WEBAPP_URL = f"{RENDER_EXTERNAL_URL}/?v=5"
+WEBAPP_URL = f"{RENDER_EXTERNAL_URL}/?v=7"
 
 # ====================================================
 # WEBHOOK SOZLAMALARI
@@ -52,9 +51,8 @@ async def bot_webhook(request: Request):
 
 
 # ====================================================
-# 1. AIOGRAM BOT HANDLERLARI (START, MENU VA TUGMALAR)
+# 1. AIOGRAM BOT HANDLERLARI
 # ====================================================
-
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📊 Сверка / Недостача"), KeyboardButton(text="📈 Живые остатки (Live)")],
@@ -75,57 +73,12 @@ async def cmd_start(message: types.Message):
         reply_markup=main_kb
     )
 
-@dp.message(F.text == "📊 Сверка / Недостача")
-async def cmd_sverka(message: types.Message):
-    await message.answer("📊 Sverka va nedostacha bo'limi tez orada ishga tushadi yoki Mini App orqali amalga oshiriladi.", reply_markup=main_kb)
-
-@dp.message(F.text == "📈 Живые остатки (Live)")
-async def cmd_live(message: types.Message):
-    await message.answer("📈 Jonli qoldiqlar (Live) ma'lumotlari yuklanmoqda...", reply_markup=main_kb)
-
-@dp.message(F.text == "🤖 Gemini AI Yordamchi")
-async def cmd_ai(message: types.Message):
-    await message.answer("🤖 Menga savolingizni yuboring, filiallar bo'yicha ma'lumot topishga yordam beraman.", reply_markup=main_kb)
-
-@dp.message(F.text == "🧹 Bazani tozalash")
-async def cmd_clear(message: types.Message):
-    await message.answer("🧹 Bazani tozalash amaliyoti faqat adminlar uchun.", reply_markup=main_kb)
-
 @dp.message(F.text == "📱 Mazzali Mini App'ni ochish")
 async def cmd_open_webapp(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📱 Mini App'ni ochish", web_app=WebAppInfo(url=WEBAPP_URL))]
     ])
     await message.answer("Mini App'ni ochish uchun quyidagi tugmani bosing:", reply_markup=kb)
-
-
-@dp.message(F.photo)
-async def handle_photo_messages(message: types.Message):
-    await message.answer("⏳ Rasm qabul qilindi, ma'lumotlar bazaga yuborilmoqda...")
-    
-    try:
-        fallback_file = "10.10.26.xlsx"
-        if os.path.exists(fallback_file):
-            loop = asyncio.get_running_loop()
-            try:
-                success = await asyncio.wait_for(
-                    loop.run_in_executor(None, db.upload_excel_to_sheet, fallback_file, "Лист1"),
-                    timeout=15.0
-                )
-            except asyncio.TimeoutError:
-                success = False
-                print("⚠️ Google Sheets'ga yuborish vaqti tugadi (timeout).")
-            
-            if success:
-                await message.answer("✅ Zaxiradagi Excel ma'lumotlari Google Sheets'ga muvaffaqiyatli yuborildi!", reply_markup=main_kb)
-            else:
-                await message.answer("⚠️ Ma'lumotlarni yuborish biroz cho'zildi.", reply_markup=main_kb)
-        else:
-            await message.answer("❌ Fallback Excel fayli topilmadi.", reply_markup=main_kb)
-    except Exception as e:
-        print(f"❌ Rasmni qayta ishlashda xatolik: {e}")
-        await message.answer("❌ Xatolik yuz berdi.", reply_markup=main_kb)
-
 
 @dp.message(F.text)
 async def handle_text_messages(message: types.Message):
@@ -183,45 +136,6 @@ async def get_dishes_list():
     return []
 
 
-class SubmitItemsRequest(BaseModel):
-    branch: str
-    doc_type: str
-    items: dict
-
-@app.post("/api/submit_items")
-async def api_submit_items(req: SubmitItemsRequest):
-    for item_name, qty in req.items.items():
-        if qty > 0:
-            await db.add_branch_transaction(
-                branch=req.branch,
-                doc_type=req.doc_type,
-                item_name=item_name,
-                quantity=qty,
-                comment="Mini App orqali kiritildi"
-            )
-    asyncio.create_task(db.sync_pending_transactions())
-    return {"status": "ok"}
-
-
-class SubmitTransferRequest(BaseModel):
-    from_branch: str
-    to_branch: str
-    items: dict
-
-@app.post("/api/submit_transfer")
-async def api_submit_transfer(req: SubmitTransferRequest):
-    for item_name, qty in req.items.items():
-        if qty > 0:
-            await db.add_transfer_transaction(
-                from_branch=req.from_branch,
-                to_branch=req.to_branch,
-                item_name=item_name,
-                quantity=qty
-            )
-    asyncio.create_task(db.sync_pending_transactions())
-    return {"status": "ok"}
-
-
 class SubmitFactoryOrderRequest(BaseModel):
     branch: str
     items: dict
@@ -233,7 +147,7 @@ async def api_submit_factory_order(req: SubmitFactoryOrderRequest):
         if qty > 0:
             await db.add_branch_transaction(
                 branch=req.branch,
-                doc_type="Заказ Fabrika",
+                doc_type="Заказ для фабрики",
                 item_name=item_name,
                 quantity=qty,
                 comment="Fabrika zakazi"
@@ -273,13 +187,16 @@ class SubmitParsedPhotoRequest(BaseModel):
 async def api_submit_photo_parsed(req: SubmitParsedPhotoRequest):
     try:
         items = json.loads(req.items_json)
+        # config.DOC_TYPES orqali texnik nomni to'g'ri ruscha nomga o'tkazamiz
+        readable_doc_type = config.DOC_TYPES.get(req.doc_type, req.doc_type)
+
         for item in items:
             item_name = item.get("item_name")
             qty = item.get("quantity", 0.0)
             if item_name and qty > 0:
                 await db.add_branch_transaction(
                     branch=req.branch,
-                    doc_type=req.doc_type,
+                    doc_type=readable_doc_type,
                     item_name=item_name,
                     quantity=qty,
                     comment="Mini App OCR orqali"
@@ -343,17 +260,19 @@ async def api_parse_photo(branch: str = Form(...), doc_type: str = Form(...), ph
         except Exception as e:
             print(f"⚠️ Google Sheets'dan menyu yuklashda xatolik: {e}")
 
-    if doc_type == "Закончившиеся блюда" or doc_type == "FINISHED_DISHES":
+    # Operatsiya turiga qarab mos keluvchi OCR funksiyasini tanlaymiz
+    if doc_type in ["Закончившиеся блюда", "FINISHED_DISHES"]:
         finished_list = ocr.parse_finished_dishes_photo(image_bytes, valid_menu_items=valid_menu)
         items = [{"item_name": name, "quantity": 1.0} for name in finished_list]
     else:
+        # Приход, Остатки, Расход блюд, Списание по сроку/порче va boshqalar
         items = ocr.parse_receipt_photo(image_bytes, branch_name=branch, valid_menu_items=valid_menu)
 
     return {"status": "ok", "items": items}
 
 
 # ====================================================
-# 4. SERVERNI ISHGA TUSHIRISH (WEBHOOK REJIMI)
+# 4. SERVERNI ISHGA TUSHIRISH
 # ====================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))

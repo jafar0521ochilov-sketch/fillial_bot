@@ -64,9 +64,20 @@
           <option value="CLOSE_SHIFT">⚖️ Смена topshirish (Сверка)</option>
           <option value="FINISHED_DISHES">📸 Закончившиеся блюда (Фото)</option>
           <option value="TRANSFER">🔄 Перемещение (Ko'chirish)</option>
+          <option value="EXPENSE_DISHES">📊 Общий расход блюд (Фото)</option>
+          <option value="WRITE_OFF">🗑 Списание (Фото)</option>
           <option value="EXTRA_GOODS">✍️ Дополнительный товар (Вручную)</option>
         </select>
       </div>
+    </div>
+
+    <!-- SPISANIYA ICHIDAGI KICHIK 2 OPERATSIYA (SROK / PORCHA) -->
+    <div id="writeOffSubWrapper" class="hidden border-t pt-2 mt-2">
+      <label class="block text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1">⚙️ Списание турини тангланг:</label>
+      <select id="writeOffSubSelect" class="w-full bg-red-50 border border-red-200 rounded-xl p-2 text-xs font-bold text-red-900 outline-none">
+        <option value="WRITE_OFF_DATE">⏳ Списание по сроку</option>
+        <option value="WRITE_OFF_DAMAGE">⚠️ Списание по порче</option>
+      </select>
     </div>
 
     <!-- KO'CHIRISH UCHUN QABUL QILUVCHI FILIAL -->
@@ -143,7 +154,7 @@
     </button>
   </div>
 
-  <!-- FOTO VA TAHRIRLASH BO'LIMI (OCR VA TRANSFER UCHUN) -->
+  <!-- FOTO VA TAHRIRLASH BO'LIMI -->
   <div id="photoSection" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
     <div class="text-center">
       <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2 text-2xl">📸</div>
@@ -178,6 +189,9 @@
       document.getElementById('factoryOrderSection').classList.toggle('hidden', dt !== 'FACTORY_ORDER');
       document.getElementById('closeShiftSection').classList.toggle('hidden', dt !== 'CLOSE_SHIFT');
       document.getElementById('targetBranchWrapper').classList.toggle('hidden', dt !== 'TRANSFER');
+      
+      // Spisaniya tanlansa, ichki kichik menyu ochiladi
+      document.getElementById('writeOffSubWrapper').classList.toggle('hidden', dt !== 'WRITE_OFF');
 
       const isPhotoDoc = ['MORNING_STOCK', 'INCOME', 'EVENING_STOCK', 'EXPENSE_DISHES', 'WRITE_OFF', 'FINISHED_DISHES', 'TRANSFER'].includes(dt);
       document.getElementById('photoSection').classList.toggle('hidden', !isPhotoDoc);
@@ -311,7 +325,6 @@
       }
     }
 
-    // Rasmni avtomatik kichiklashtiruvchi yordamchi funksiya (Crash bo'lishining oldini oladi)
     function compressImage(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -356,13 +369,17 @@
       if (!file) return;
 
       const branch = document.getElementById('branchSelect').value;
-      const dt = document.getElementById('docTypeSelect').value;
+      let dt = document.getElementById('docTypeSelect').value;
+      
+      // Agar spsaniya tanlangan bo'lsa, ichki kichik menyudagi qiymatni olamiz
+      if (dt === 'WRITE_OFF') {
+        dt = document.getElementById('writeOffSubSelect').value;
+      }
 
       document.getElementById('parsingLoader').classList.remove('hidden');
       document.getElementById('parsedItemsContainer').innerHTML = '';
 
       try {
-        // Galereyadan olingan katta rasmni siqamiz
         const compressedFile = await compressImage(file);
 
         const formData = new FormData();
@@ -413,7 +430,10 @@
 
     async function submitParsedData(totalCount) {
       const branch = document.getElementById('branchSelect').value;
-      const dt = document.getElementById('docTypeSelect').value;
+      let dt = document.getElementById('docTypeSelect').value;
+      if (dt === 'WRITE_OFF') {
+        dt = document.getElementById('writeOffSubSelect').value;
+      }
       const targetBranch = document.getElementById('targetBranchSelect').value;
       let items = [];
 
@@ -460,7 +480,7 @@
     }
 
     async function submitExtraData() {
-      const branch = document.getElementById('branchSelect').value; // XАТО ТЎҒРИЛАНДИ (']' -> ')')
+      const branch = document.getElementById('branchSelect').value;
       const text = document.getElementById('extraGoodsText').value;
       if (!text.trim()) {
         alert("Ma'lumot kiriting!");

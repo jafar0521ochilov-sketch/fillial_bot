@@ -58,9 +58,10 @@ DOC_TYPES = {
     "INCOME": "Приход по накладной",
     "EVENING_STOCK": "Вечерний остаток",
     "EXPENSE_DISHES": "Общий расход блюд",
+    "WRITE_OFF_DATE": "Списание по сроку",
+    "WRITE_OFF_DAMAGE": "Списание по порче",
     "EXTRA_GOODS": "Дополнительный товар",
     "FINISHED_DISHES": "Закончившиеся блюда",
-    "WRITE_OFF": "Списание",
     "TRANSFER": "Перемещение",
     "FACTORY_ORDER": "Заказ для фабрики"
 }
