@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Tartib raqamlari, qismlarga bo'lib kesish va miqdorlar xavfsizlik filtri bilan)
+(Faqat jadval qismini qirqib olish / Smart Cropping va aniq miqdor o'qish moduli)
 """
 import base64
 import io
@@ -14,7 +14,7 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
-# 1 dan 134 gacha bo'lgan taomlar bazasi va ularning tartib raqamlari
+# 1 dan 134 gacha bo'lgan taomlar bazasi va tartib raqamlari
 MENU_ITEMS_WITH_INDEX = {
     1: "Гречка с капустой", 2: "Гарнир Пюре карт.", 3: "Гарнир Рис отв.", 
     4: "Драники картофельные с соус.Тар-тар", 5: "Картофель с грибами", 
@@ -71,9 +71,9 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
         menu_str = "\n".join([f"{k}: {v}" for k, v in sub_menu.items()])
 
         prompt = (
-            f"Это фрагмент накладной или чека (позиции с номерами от {start_id} по {end_id}).\n"
+            f"Это фрагмент таблицы с блюдами (позиции с номерами от {start_id} по {end_id}).\n"
             "ЖЕСТКИЕ ПРАВИЛА:\n"
-            "1. Количество (q) — это всегда небольшое число от 1 до 100.\n"
+            "1. Количество (q) — это всегда небольшое число от 1 до 100, указанное в колонке 'Кол'.\n"
             "2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО путать количество с ценой или суммами (например, 39000, 147000 — это деньги, их писать нельзя!).\n"
             "3. Для каждого порядкового номера (id) укажите точное индивидуальное количество из чека.\n\n"
             f"СПИСОК ДЛЯ ЭТОГО ФРАГМЕНТА:\n{menu_str}\n\n"
@@ -85,7 +85,7 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
             model=MODEL_NAME,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Вы — точный бухгалтер. Считывайте строго индивидуальное количество (1-100) для каждого номера без путаницы с ценами."},
+                {"role": "system", "content": "Вы — точный бухгалтер. Считывайте строго индивидуальное количество (1-100) из колонки 'Кол' для каждого номера без путаницы с ценами."},
                 {"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}]}
             ],
             max_tokens=2000,
@@ -121,7 +121,8 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Chek rasmini 3 ta qismga bo'lib kesib, tartib raqamlari bo'yicha aniq o'qiydi.
+    Smart Cropping: Chekning ortiqcha tepa va pastki qismlarini kesib tashlab, 
+    faqat jadval qismini 3 ta bo'lakka bo'lib o'qiydi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -129,10 +130,19 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             image = image.convert('RGB')
             
         width, height = image.size
+
+        # SMART CROP: Tepadagi 18% va pastdagi 10% ortiqcha yozuv/imzolarni kesib tashlaymiz
+        crop_top = int(height * 0.18)
+        crop_bottom = int(height * 0.90)
+        
+        if crop_bottom > crop_top:
+            image = image.crop((0, crop_top, width, crop_bottom))
+            width, height = image.size
+
         all_items = []
 
-        # Uzun chek bo'lsa 3 ta bo'lakka kesamiz
-        if height > width * 1.2:
+        # Kesilgan toza jadvalni 3 ta qismga bo'lib tahlil qilamiz
+        if height > width * 0.8:
             h_third = height / 3.0
             
             # 1-bo'lak (1 - 50)
@@ -153,8 +163,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             image.crop(box3).save(buf3, format="JPEG", quality=95)
             all_items.extend(_parse_chunk(buf3.getvalue(), 101, 134))
         else:
-            # Qisqa chek bo'lsa bittada o'qiymiz
-            all_items.extend(_parse_chunk(image_bytes, 1, 134))
+            all_items.extend(_parse_chunk(image.tobytes(), 1, 134))
 
         return all_items
             
