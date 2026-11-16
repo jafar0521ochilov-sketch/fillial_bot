@@ -1,6 +1,6 @@
 """
 gemini_ocr.py -> OpenAI GPT-4o OCR moduli
-(Uzun nakladnoylarni qismlarga bo'lib, raqamlar bo'yicha aniq o'qish versiyasi)
+(Tartib raqamlari, qismlarga bo'lib kesish va miqdorlar xavfsizlik filtri bilan)
 """
 import base64
 import io
@@ -14,6 +14,7 @@ import config
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 MODEL_NAME = "gpt-4o"
 
+# 1 dan 134 gacha bo'lgan taomlar bazasi va ularning tartib raqamlari
 MENU_ITEMS_WITH_INDEX = {
     1: "Гречка с капустой", 2: "Гарнир Пюре карт.", 3: "Гарнир Рис отв.", 
     4: "Драники картофельные с соус.Тар-тар", 5: "Картофель с грибами", 
@@ -70,26 +71,29 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
         menu_str = "\n".join([f"{k}: {v}" for k, v in sub_menu.items()])
 
         prompt = (
-            f"Это часть накладной ProFood (позиции с {start_id} по {end_id}).\n"
-            "Слева указан порядковый номер (№), справа в ячейке — количество.\n"
-            "Для каждого номера укажите точное индивидуальное количество из его ячейки. Запрещено ставить одинаковые цифры всем!\n\n"
-            f"СПИСОК ДЛЯ ЭТОЙ ЧАСТИ:\n{menu_str}\n\n"
+            f"Это фрагмент накладной или чека (позиции с номерами от {start_id} по {end_id}).\n"
+            "ЖЕСТКИЕ ПРАВИЛА:\n"
+            "1. Количество (q) — это всегда небольшое число от 1 до 100.\n"
+            "2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО путать количество с ценой или суммами (например, 39000, 147000 — это деньги, их писать нельзя!).\n"
+            "3. Для каждого порядкового номера (id) укажите точное индивидуальное количество из чека.\n\n"
+            f"СПИСОК ДЛЯ ЭТОГО ФРАГМЕНТА:\n{menu_str}\n\n"
             "Верните ответ СТРОГО в формате JSON:\n"
-            '{\n  "items": [\n    {"id": ' + str(start_id) + ', "q": число}\n  ]\n}'
+            '{\n  "items": [\n    {"id": ' + str(start_id) + ', "q": число_от_1_до_100}\n  ]\n}'
         )
         
         response = client.chat.completions.create(
             model=MODEL_NAME,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Вы бухгалтер. Считывайте точное количество для каждого номера без дублирования."},
+                {"role": "system", "content": "Вы — точный бухгалтер. Считывайте строго индивидуальное количество (1-100) для каждого номера без путаницы с ценами."},
                 {"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}]}
             ],
             max_tokens=2000,
             temperature=0.0
         )
 
-        data = json.loads(response.choices[0].message.content.replace("```json", "").replace("```", "").strip())
+        raw_text = response.choices[0].message.content.strip()
+        data = json.loads(raw_text.replace("```json", "").replace("```", "").strip())
         raw_items = data.get("items", []) if isinstance(data, dict) else data
         
         chunk_result = []
@@ -97,10 +101,19 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
             item_id = it.get("id")
             try:
                 qty = float(it.get("q", 1.0))
+                # Xavfsizlik filtri: agar narxni o'qib yuborsa, 1 ga to'g'rilaymiz
+                if qty > 100:
+                    qty = 1.0
             except:
                 qty = 1.0
-            if item_id and int(item_id) in MENU_ITEMS_WITH_INDEX:
-                chunk_result.append({"item_name": MENU_ITEMS_WITH_INDEX[int(item_id)], "quantity": qty})
+                
+            if item_id is not None:
+                try:
+                    int_id = int(item_id)
+                    if int_id in MENU_ITEMS_WITH_INDEX:
+                        chunk_result.append({"item_name": MENU_ITEMS_WITH_INDEX[int_id], "quantity": qty})
+                except:
+                    pass
         return chunk_result
     except Exception as e:
         print(f"❌ Chunk xatolik ({start_id}-{end_id}): {e}")
@@ -108,7 +121,7 @@ def _parse_chunk(chunk_bytes: bytes, start_id: int, end_id: int) -> list[dict]:
 
 def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_items: list[str] = None) -> list[dict]:
     """
-    Nakladnoyni 3 ta qismga bo'lib (1-50, 51-100, 101-134), har birining raqamlari bo'yicha aniq o'qish.
+    Chek rasmini 3 ta qismga bo'lib kesib, tartib raqamlari bo'yicha aniq o'qiydi.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
@@ -118,7 +131,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
         width, height = image.size
         all_items = []
 
-        # Agar rasm juda uzun bo'lsa (nakladnoy olsa), uni 3 ta qismga bo'lamiz
+        # Uzun chek bo'lsa 3 ta bo'lakka kesamiz
         if height > width * 1.2:
             h_third = height / 3.0
             
@@ -140,7 +153,7 @@ def parse_receipt_photo(image_bytes: bytes, branch_name: str = "", valid_menu_it
             image.crop(box3).save(buf3, format="JPEG", quality=95)
             all_items.extend(_parse_chunk(buf3.getvalue(), 101, 134))
         else:
-            # Oddiy kichik kassa cheki bo'lsa
+            # Qisqa chek bo'lsa bittada o'qiymiz
             all_items.extend(_parse_chunk(image_bytes, 1, 134))
 
         return all_items
